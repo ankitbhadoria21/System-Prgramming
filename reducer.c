@@ -23,10 +23,15 @@ str+=1;
 
 if(prev_char!='1' && str[0]!=prev_char){
 node *tmp=&node_list[prev_char-'a'];
+node *prev_tmp=tmp;
 tmp=tmp->next;
+prev_tmp->next=NULL;
 while(tmp){
 printf("(%s,%d)\n",tmp->str,tmp->count);
+prev_tmp=tmp;
 tmp=tmp->next;
+prev_tmp->next=NULL;
+free(prev_tmp);
 }
 }
 
@@ -80,10 +85,17 @@ reducer(stdin);
 close(fd[0]);
 }
 else {
-char *arg[]={"/home/hawking/asp/map","/home/hawking/asp/a.txt",NULL};
+char cwd[MAX_BUF+7];
+char file_to_read[MAX_BUF];
+printf("Input absolute path of the file to read\n");
+scanf("%s",file_to_read);
+getcwd(cwd,MAX_BUF);
+strcat(cwd,"/mapper");
+printf("%s\n",cwd);
+char *arg[]={cwd,file_to_read,NULL};
 close(fd[0]);
 dup2(fd[1],1);
-execvp("/home/hawking/asp/map",arg);
+execvp(cwd,arg);
 close(fd[1]);
 }
 return 0;

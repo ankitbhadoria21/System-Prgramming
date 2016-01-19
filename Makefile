@@ -1,12 +1,12 @@
-map: map.c
-	gcc -o map map.c
+mapper: map.c
+	gcc -o mapper map.c
 
 reducer: reducer.c
 	gcc -o reducer reducer.c
 
 clean:
-	rm -rf reducer map
+	rm -rf reducer mapper
 
 all:
-	gcc -o map map.c
+	gcc -o mapper map.c
 	gcc -o reducer reducer.c
