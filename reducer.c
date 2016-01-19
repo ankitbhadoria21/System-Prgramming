@@ -78,11 +78,11 @@ pipe(fd);
 pid=fork();
 if(pid>0)
 {
-wait(NULL);
 close(fd[1]);
 dup2(fd[0],0);
 reducer(stdin);
 close(fd[0]);
+wait(NULL);
 }
 else {
 char cwd[MAX_BUF+7];
@@ -91,7 +91,6 @@ printf("Input absolute path of the file to read\n");
 scanf("%s",file_to_read);
 getcwd(cwd,MAX_BUF);
 strcat(cwd,"/mapper");
-printf("%s\n",cwd);
 char *arg[]={cwd,file_to_read,NULL};
 close(fd[0]);
 dup2(fd[1],1);
