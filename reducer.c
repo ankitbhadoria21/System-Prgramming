@@ -67,35 +67,12 @@ printf("(%s,%d)\n",tmp->str,tmp->count);
 tmp=tmp->next;
 }
 }
-
 }
 
 int main(int argc,char *argv[])
 {
-int fd[2];
-pid_t pid;
-pipe(fd);
-pid=fork();
-if(pid>0)
-{
-close(fd[1]);
-dup2(fd[0],0);
+if(!strcmp(argv[1],"stdin"))
 reducer(stdin);
-close(fd[0]);
-wait(NULL);
-}
-else {
-char cwd[MAX_BUF+7];
-char file_to_read[MAX_BUF];
-printf("Input absolute path of the file to read\n");
-scanf("%s",file_to_read);
-getcwd(cwd,MAX_BUF);
-strcat(cwd,"/mapper");
-char *arg[]={cwd,file_to_read,NULL};
-close(fd[0]);
-dup2(fd[1],1);
-execvp(cwd,arg);
-close(fd[1]);
-}
+else printf("Wrong File Stream Passed to reducer\n");
 return 0;
 }
