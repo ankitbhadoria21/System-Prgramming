@@ -1,8 +1,7 @@
 #include<stdlib.h>
 #include<stdio.h>
 #include<string.h>
-#include<sys/wait.h>
-#include<unistd.h>
+#define SENTINAL '%'
 #define MAX_BUF 256
 
 void reducer(FILE *fs)
@@ -21,7 +20,7 @@ while(fgets(buffer,MAX_BUF,fs)!=NULL){
 str=strtok(buffer,",");
 str+=1;
 
-if(prev_char!='1' && str[0]!=prev_char){
+if(prev_char!=SENTINAL && str[0]!=prev_char){
 node *tmp=&node_list[prev_char-'a'];
 node *prev_tmp=tmp;
 tmp=tmp->next;
@@ -59,7 +58,7 @@ prev_char=str[0];
 
 }
 
-if(prev_char!='1'){
+if(prev_char!=SENTINAL){
 node *tmp=&node_list[prev_char-'a'];
 tmp=tmp->next;
 while(tmp){

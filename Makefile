@@ -1,3 +1,5 @@
+all: clean combiner mapper reducer
+
 mapper: map.c
 	@gcc -o mapper map.c
 
@@ -10,4 +12,3 @@ combiner: combiner.c
 clean:
 	@rm -rf reducer mapper combiner
 
-all: clean combiner mapper reducer
