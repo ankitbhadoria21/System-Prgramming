@@ -4,24 +4,25 @@
 #define SENTINAL '%'
 #define MAX_BUF 256
 
-void reducer(FILE *fs)
-{
 typedef struct node{
 char str[MAX_BUF];
 int count;
 struct node *next;
 }node;
 
-node node_list[26]={0};
+
+void reducer(FILE *fs)
+{
+node node_list[256]={0};
 char buffer[MAX_BUF];
-char *str,prev_char='1';
+char *str,prev_char=SENTINAL;
 
 while(fgets(buffer,MAX_BUF,fs)!=NULL){
 str=strtok(buffer,",");
 str+=1;
 
 if(prev_char!=SENTINAL && str[0]!=prev_char){
-node *tmp=&node_list[prev_char-'a'];
+node *tmp=&node_list[prev_char];
 node *prev_tmp=tmp;
 tmp=tmp->next;
 prev_tmp->next=NULL;
@@ -34,7 +35,7 @@ free(prev_tmp);
 }
 }
 
-node *tmp=&node_list[str[0]-'a'];
+node *tmp=&node_list[str[0]];
 node *prev_tmp;
 
 while(tmp){
@@ -59,7 +60,7 @@ prev_char=str[0];
 }
 
 if(prev_char!=SENTINAL){
-node *tmp=&node_list[prev_char-'a'];
+node *tmp=&node_list[prev_char];
 tmp=tmp->next;
 while(tmp){
 printf("(%s,%d)\n",tmp->str,tmp->count);
