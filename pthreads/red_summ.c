@@ -1,6 +1,8 @@
 #include<stdio.h>
 #include<string.h>
 #include<stdlib.h>
+#include<pthread.h>
+#include<semaphore.h>
 
 #define SENTINAL '%'
 #define MAX_BUF 256
@@ -8,7 +10,7 @@
 char reducer_pool[5*MAX_BUF]="(fsjka,1) (fhsjdkhda,1) (jkdka,1) (jkdka,1) (hjfhsjf,1) (hajfhaj,1) (fsjka,1) (faj,1)";
 pthread_mutex_t reducer_lock=PTHREAD_MUTEX_INITIALIZER;
 char summarizer_pool[5*MAX_BUF];
-pthread_mutex_t summarizer_lock=PTHREAD_MUTEX_INTIALIZER;
+pthread_mutex_t summarizer_lock=PTHREAD_MUTEX_INITIALIZER;
 sem_t sem_read2,sem_write2;
 
 typedef struct node{
@@ -17,7 +19,7 @@ int count;
 struct node *next;
 }node;
 
-pthread_mutex_t node_lock=PTHREAD_MUTEX_INTIALIZER;
+pthread_mutex_t node_lock=PTHREAD_MUTEX_INITIALIZER;
 node node_list[256]={0};
 
 void reducer()
@@ -39,7 +41,7 @@ word_list[ttl_wrd++]=tmp;
 tmp=strtok(NULL," ");
 }
 
-pthread_mutext_loc(&node_lock);
+pthread_mutex_lock(&node_lock);
 while(index<ttl_wrd){
 str=strtok(word_list[index++],",");
 str+=1;
@@ -50,13 +52,13 @@ tmp=tmp->next;
 prev_tmp->next=NULL;
 pthread_mutex_lock(&summarizer_lock);
 while(tmp){
-sprintf(summarizer_pool,"(%s,%d)\n",tmp->str,tmp->count);
+printf("(%s,%d)\n",tmp->str,tmp->count);
 prev_tmp=tmp;
 tmp=tmp->next;
 prev_tmp->next=NULL;
 free(prev_tmp);
 }
-pthread_mutext_unlock(&summarizer_lock);
+pthread_mutex_unlock(&summarizer_lock);
 }
 
 node *tmp=&node_list[str[0]];
