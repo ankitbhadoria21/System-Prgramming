@@ -7,7 +7,7 @@
 #define SENTINAL '%'
 #define MAX_BUF 256
 
-char reducer_pool[5*MAX_BUF]="(fsjka,1) (fhsjdkhda,1) (jkdka,1) (jkdka,1) (hjfhsjf,1) (hajfhaj,1) (fsjka,1) (faj,1)";
+char reducer_pool[5*MAX_BUF]="(fsjka,1) (fhsjdkhda,1) (jkdka,1) (jkdka,1) (hjfhsjf,1) (hajfhaj,1) (hajfhaj,1) (hajfhaj,1) (hajfhaj,1) (fsjka,1) (faj,1)";
 pthread_mutex_t reducer_lock=PTHREAD_MUTEX_INITIALIZER;
 char summarizer_pool[5*MAX_BUF];
 pthread_mutex_t summarizer_lock=PTHREAD_MUTEX_INITIALIZER;
@@ -28,7 +28,10 @@ char buffer[5*MAX_BUF];
 char *str,prev_char=SENTINAL;
 char *tmp,*word_list[MAX_BUF];
 
-int i=0,i1=0,index=0,ttl_wrd=0;
+sem_wait(&sem_read2);
+prev_char=SENTINAL;
+int i=0,i1=0,index=0,ttl_wrd=0,size=0;
+
 pthread_mutex_lock(&reducer_lock);
 while(reducer_pool[i1]) {
 buffer[i++]=reducer_pool[i1++];
@@ -52,8 +55,15 @@ tmp=tmp->next;
 prev_tmp->next=NULL;
 pthread_mutex_lock(&summarizer_lock);
 while(tmp){
-printf("(%s,%d)\n",tmp->str,tmp->count);
+sprintf(summarizer_pool+size,"(%s,%d)\n",tmp->str,tmp->count);
 prev_tmp=tmp;
+int i;
+/*
+for(i=0;summarizer_pool[i];++i)
+printf("%c",summarizer_pool[i]);
+printf("\n");
+*/
+size+=strlen(tmp->str)+5;
 tmp=tmp->next;
 prev_tmp->next=NULL;
 free(prev_tmp);
@@ -86,18 +96,41 @@ prev_char=str[0];
 }
 
 if(prev_char!=SENTINAL){
+//size=0;
 node *tmp=&node_list[prev_char];
 tmp=tmp->next;
+node *prev_tmp;
+pthread_mutex_lock(&summarizer_lock);
 while(tmp){
-printf("(%s,%d)\n",tmp->str,tmp->count);
+sprintf(summarizer_pool+size,"(%s,%d)\n",tmp->str,tmp->count);
+puts(summarizer_pool+size);
+size+=strlen(tmp->str)+5;
+prev_tmp=tmp;
 tmp=tmp->next;
+free(prev_tmp);
 }
+pthread_mutex_unlock(&summarizer_lock);
 }
 pthread_mutex_unlock(&node_lock);
+sem_post(&sem_write2);
+}
+
+
+void wordCountWriter(){
+sem_wait(&sem_write2);
+FILE* fp=fopen("./wordCount.txt","a+");
+pthread_mutex_lock(&summarizer_lock);
+int i=0;
+while(summarizer_pool[i]) {
+fputc(summarizer_pool[i++],fp);
+}
+pthread_mutex_unlock(&summarizer_lock);
+fclose(fp);
+sem_post(&sem_read2);
 }
 
 int main()
 {
 reducer();
-
+wordCountWriter();
 }
