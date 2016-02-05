@@ -7,7 +7,7 @@
 #define SENTINAL '%'
 #define MAX_BUF 256
 
-char reducer_pool[5*MAX_BUF]="(fsjka,1) (fhsjdkhda,1) (jkdka,1) (jkdka,1) (hjfhsjf,1) (hajfhaj,1) (hajfhaj,1) (hajfhaj,1) (hajfhaj,1) (fsjka,1) (faj,1)";
+char reducer_pool[5*MAX_BUF]="(fsjka,1) (fsjka,1) (fsjka,1) (fsjka,1) (fsjka,1) (fhsjdkhda,1) (jkdka,1) (jkdka,1) (hjfhsjf,1) (hjfhsjf,1) (hjfhsjf,1) (hajfhaj,1) (hajfhaj,1) (hajfhaj,1) (hajfhaj,1) (fsjka,1) (faj,1)";
 pthread_mutex_t reducer_lock=PTHREAD_MUTEX_INITIALIZER;
 char summarizer_pool[5*MAX_BUF];
 pthread_mutex_t summarizer_lock=PTHREAD_MUTEX_INITIALIZER;
@@ -57,8 +57,8 @@ pthread_mutex_lock(&summarizer_lock);
 while(tmp){
 sprintf(summarizer_pool+size,"(%s,%d)\n",tmp->str,tmp->count);
 prev_tmp=tmp;
-int i;
 /*
+int i;
 for(i=0;summarizer_pool[i];++i)
 printf("%c",summarizer_pool[i]);
 printf("\n");
@@ -103,7 +103,7 @@ node *prev_tmp;
 pthread_mutex_lock(&summarizer_lock);
 while(tmp){
 sprintf(summarizer_pool+size,"(%s,%d)\n",tmp->str,tmp->count);
-puts(summarizer_pool+size);
+//puts(summarizer_pool+size);
 size+=strlen(tmp->str)+5;
 prev_tmp=tmp;
 tmp=tmp->next;
@@ -131,6 +131,8 @@ sem_post(&sem_read2);
 
 int main()
 {
+sem_init(&sem_write2,0,0);
+sem_init(&sem_read2,0,1);
 reducer();
 wordCountWriter();
 }
