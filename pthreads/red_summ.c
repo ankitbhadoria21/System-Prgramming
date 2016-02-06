@@ -1,4 +1,3 @@
-
 #include<stdio.h>
 #include<string.h>
 #include<stdlib.h>
@@ -43,11 +42,13 @@ char *str,prev_char=SENTINAL;
 char *tmp,*word_list[MAX_BUF];
 int done;
 while(1) {
+int ind;
 sem_wait(&sem_write1);
 pthread_mutex_lock(&gen_read);
 done=doneReading1;
 if(done){
 doneReading2=1;
+for(ind=0;ind<no_of_mapper_thread-no_of_reducer_thread;++ind)
 sem_post(&sem_read1);
 sem_post(&sem_write2);
 pthread_mutex_unlock(&gen_read);
@@ -134,8 +135,6 @@ prev_char=str[0];
 }
 
 if(prev_char!=SENTINAL){
-printf("%c\n",prev_char);
-
 node *tmp=&node_list[prev_char];
 node *prev_tmp=tmp;
 tmp=tmp->next;
@@ -144,11 +143,12 @@ pthread_mutex_lock(&summarizer_lock);
 while(tmp){
 sprintf(summarizer_pool+size,"(%s,%d)\n",tmp->str,tmp->count);
 //puts(summarizer_pool+size);
+/*
 int i;
 for(i=0;summarizer_pool[i];++i)
 printf("%c",summarizer_pool[i]);
 printf("\n");
-
+*/
 size+=strlen(tmp->str)+5;
 prev_tmp=tmp;
 tmp=tmp->next;
@@ -170,16 +170,13 @@ void* wordCountWriter(void *a){
 int done;
 while(1) {
 sem_wait(&sem_write2);
-//printf("in writer\n");
 pthread_mutex_lock(&gen_read);
 done=doneReading2;
-//printf("%d\n",doneReading2);
 if(done){
 pthread_mutex_unlock(&gen_read);
 FILE* fp=fopen("./wordCount.txt","a+");
 pthread_mutex_lock(&summarizer_lock);
 int i=0;
-//printf("in\n");
 while(summarizer_pool[i]) {
 fputc(summarizer_pool[i],fp);
 printf("%c",summarizer_pool[i]);
@@ -195,12 +192,10 @@ pthread_exit(0);
 else {
 pthread_mutex_unlock(&gen_read);
 }
-//printf("in writer1\n");
 
 FILE* fp=fopen("./wordCount.txt","a+");
 pthread_mutex_lock(&summarizer_lock);
 int i=0;
-//printf("write\n");
 while(summarizer_pool[i]) {
 fputc(summarizer_pool[i],fp);
 summarizer_pool[i]='\0';
@@ -208,9 +203,7 @@ i++;
 }
 pthread_mutex_unlock(&summarizer_lock);
 fclose(fp);
-//printf("inc\n");
 sem_post(&sem_read2);
-//printf("done\n");
 }
 return NULL;
 }

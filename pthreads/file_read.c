@@ -16,11 +16,8 @@ sem_t sem_write,sem_read,sem_read1,sem_write1;
 sem_t sem_read2,sem_write2;
 int doneReading=0,doneReading1=0;
 int no_of_mapper_thread,no_of_reducer_thread,no_of_summarizer_thread;
-pthread_t mapper_thread;
-pthread_t mapper_thread1;
-pthread_t reducer_thread;
-pthread_t reducer_thread1;
-pthread_t reducer_thread2;
+pthread_t mapper_thread[1000];
+pthread_t reducer_thread[1000];
 pthread_t write_thread;
 pthread_t file_reader;
 
@@ -29,7 +26,7 @@ extern void* reducer(void *);
 
 void* mapper_pool_updater(void *buf)
 {
-int i,i1;
+int i,i1,ind;
 char buffer[MAX_BUF_SIZE];
 char *buf1=(char*)buf;
 FILE* fs=fopen(buf1,"r");
@@ -55,7 +52,7 @@ fclose(fs);
 sem_wait(&sem_read);
 doneReading=1;
 //do write as many time as mapper thread
-sem_post(&sem_write);
+for(ind=0;ind<no_of_mapper_thread;++ind)
 sem_post(&sem_write);
 printf("Mapper Updater Thread %lld exiting\n",pthread_self());
 }
@@ -73,9 +70,11 @@ sem_wait(&sem_read1);
 pthread_mutex_lock(&gen_read);
 done=doneReading;
 if(done){
+int i,ind;
 doneReading1+=1;
 sem_post(&sem_read);
 sem_post(&sem_write1);
+for(ind=0;ind<no_of_reducer_thread-no_of_mapper_thread;++ind)
 sem_post(&sem_write1);
 pthread_mutex_unlock(&gen_read);
 printf("Mapper Thread %lld exiting\n",pthread_self());
@@ -99,7 +98,7 @@ while(pointToCh!=NULL)
 sprintf(reducer_pool+size,"(%s,1) ",pointToCh);
 size+=strlen(pointToCh)+5;
 pointToCh=(char*)strtok(NULL," \n");
-puts(reducer_pool);
+//puts(reducer_pool);
 }
 pthread_mutex_unlock(&reducer_lock);
 //pthread_mutex_unlock(&mapper_lock);
@@ -110,6 +109,7 @@ memset(buffer,0,MAX_BUF);
 peintf("Mapper Thread %lld Exited\n");
 }
 
+//intialize semaphores
 void init() {
 sem_init(&sem_write,0,0);
 sem_init(&sem_read,0,1);
@@ -121,33 +121,29 @@ sem_init(&sem_read2,0,1);
 
 
 int main(int argc,char* argv[]){
+int i,j;
 init();
-//no_of_mapper_thread=itoa(argv[1]);
-//no_of_reducer_thread=itoa(argv[2]);
-/*
-pthread_t mapper_thread;
-pthread_t mapper_thread1;
-pthread_t reducer_thread;
-pthread_t reducer_thread1;
-pthread_t reducer_thread2;
-pthread_t write_thread;
-pthread_t file_reader;
-*/
-char buf[]="./a.txt";
-pthread_create(&file_reader,NULL,mapper_pool_updater,(void*)buf);
-pthread_create(&mapper_thread,NULL,mapper,NULL);
-pthread_create(&mapper_thread1,NULL,mapper,NULL);
-pthread_create(&reducer_thread,NULL,reducer,NULL);
-pthread_create(&reducer_thread1,NULL,reducer,NULL);
-pthread_create(&reducer_thread2,NULL,reducer,NULL);
+no_of_mapper_thread=atoi(argv[1]);
+no_of_reducer_thread=atoi(argv[2]);
+char *file_to_read="./a.txt";
+pthread_create(&file_reader,NULL,mapper_pool_updater,(void*)file_to_read);
+
+for(i=0;i<no_of_mapper_thread;++i)
+pthread_create(&mapper_thread[i],NULL,mapper,NULL);
+
+for(i=0;i<no_of_reducer_thread;++i)
+pthread_create(&reducer_thread[i],NULL,reducer,NULL);
+
 pthread_create(&write_thread,NULL,wordCountWriter,NULL);
 
 pthread_join(file_reader,NULL);
-pthread_join(mapper_thread,NULL);
-pthread_join(mapper_thread1,NULL);
-pthread_join(reducer_thread,NULL);
-pthread_join(reducer_thread1,NULL);
-pthread_join(reducer_thread2,NULL);
+
+for(i=0;i<no_of_mapper_thread;++i) 
+pthread_join(mapper_thread[i],NULL);
+
+for(i=0;i<no_of_reducer_thread;++i)
+pthread_join(reducer_thread[i],NULL);
+
 pthread_join(write_thread,NULL);
 return 0;
 }
