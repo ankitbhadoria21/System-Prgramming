@@ -54,6 +54,7 @@ sem_post(&sem_write);
 fclose(fs);
 sem_wait(&sem_read);
 doneReading=1;
+//do write as many time as mapper thread
 sem_post(&sem_write);
 sem_post(&sem_write);
 printf("Mapper Updater Thread %lld exiting\n",pthread_self());
@@ -68,11 +69,13 @@ while(1){
 printf("Mapper Thread %lld started\n",pthread_self());
 int i=0,i1=0;
 sem_wait(&sem_write);
+sem_wait(&sem_read1);
 pthread_mutex_lock(&gen_read);
 done=doneReading;
 if(done){
-doneReading1=1;
+doneReading1+=1;
 sem_post(&sem_read);
+sem_post(&sem_write1);
 sem_post(&sem_write1);
 pthread_mutex_unlock(&gen_read);
 printf("Mapper Thread %lld exiting\n",pthread_self());
@@ -81,13 +84,13 @@ pthread_exit(0);
 else {
 pthread_mutex_unlock(&gen_read);
 }
-sem_wait(&sem_read1);
+//sem_wait(&sem_read1);
 pthread_mutex_lock(&mapper_lock);
 while(mapper_pool[i]) {
 buffer[i1++]=mapper_pool[i];
 mapper_pool[i++]=0;
 }
-
+pthread_mutex_unlock(&mapper_lock);
 char *pointToCh;int size=0;
 pointToCh=(char*)strtok(buffer," \n");
 pthread_mutex_lock(&reducer_lock);
@@ -96,10 +99,10 @@ while(pointToCh!=NULL)
 sprintf(reducer_pool+size,"(%s,1) ",pointToCh);
 size+=strlen(pointToCh)+5;
 pointToCh=(char*)strtok(NULL," \n");
-//puts(reducer_pool);
+puts(reducer_pool);
 }
 pthread_mutex_unlock(&reducer_lock);
-pthread_mutex_unlock(&mapper_lock);
+//pthread_mutex_unlock(&mapper_lock);
 sem_post(&sem_write1);
 sem_post(&sem_read);
 memset(buffer,0,MAX_BUF);
@@ -135,12 +138,16 @@ pthread_create(&file_reader,NULL,mapper_pool_updater,(void*)buf);
 pthread_create(&mapper_thread,NULL,mapper,NULL);
 pthread_create(&mapper_thread1,NULL,mapper,NULL);
 pthread_create(&reducer_thread,NULL,reducer,NULL);
+pthread_create(&reducer_thread1,NULL,reducer,NULL);
+pthread_create(&reducer_thread2,NULL,reducer,NULL);
 pthread_create(&write_thread,NULL,wordCountWriter,NULL);
 
 pthread_join(file_reader,NULL);
 pthread_join(mapper_thread,NULL);
 pthread_join(mapper_thread1,NULL);
 pthread_join(reducer_thread,NULL);
+pthread_join(reducer_thread1,NULL);
+pthread_join(reducer_thread2,NULL);
 pthread_join(write_thread,NULL);
 return 0;
 }

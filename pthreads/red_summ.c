@@ -65,9 +65,10 @@ int i=0,i1=0,index=0,ttl_wrd=0,size=0;
 
 pthread_mutex_lock(&reducer_lock);
 while(reducer_pool[i1]) {
+//printf("in reducer\n");
 //puts(reducer_pool);
-buffer[i++]=reducer_pool[i1];
-reducer_pool[i1++]=0;
+buffer[i++]=reducer_pool[i1++];
+//reducer_pool[i1++]=0;
 }
 pthread_mutex_unlock(&reducer_lock);
 
