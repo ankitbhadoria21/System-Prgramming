@@ -2,7 +2,7 @@
 #include<pthread.h>
 #include<string.h>
 #include<semaphore.h>
-
+#include<signal.h>
 #define MAX_BUF_SIZE 256
 #define MAX_BUF 256
 
@@ -13,16 +13,19 @@ pthread_mutex_t mapper_lock=PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t reducer_lock=PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t gen_read=PTHREAD_MUTEX_INITIALIZER;
 sem_t sem_write,sem_read,sem_read1,sem_write1;
-sem_t sem_read2,sem_write2;
+sem_t sem_read2,sem_write2,sem_read3,sem_read4,sem_write3,sem_write4;
 int doneReading=0,doneReading1=0;
 int no_of_mapper_thread,no_of_reducer_thread,no_of_summarizer_thread;
 pthread_t mapper_thread[1000];
 pthread_t reducer_thread[1000];
-pthread_t write_thread;
+pthread_t summarizer_thread[1000];
+pthread_t write_thread,letter_thread;
 pthread_t file_reader;
 
 extern void* wordCountWriter(void *);
 extern void* reducer(void *);
+extern void* summarizer(void *);
+extern void* write_letter(void *);
 
 void* mapper_pool_updater(void *buf)
 {
@@ -117,14 +120,24 @@ sem_init(&sem_read1,0,1);
 sem_init(&sem_write1,0,0);
 sem_init(&sem_write2,0,0);
 sem_init(&sem_read2,0,1);
+sem_init(&sem_write3,0,0);
+sem_init(&sem_read3,0,0);
+sem_init(&sem_write4,0,0);
+sem_init(&sem_read4,0,1);
 }
 
+void handler(int a) {
+printf("in handler\n");
+pthread_exit(0);
+}
 
 int main(int argc,char* argv[]){
 int i,j;
 init();
+signal(SIGKILL,handler);
 no_of_mapper_thread=atoi(argv[1]);
 no_of_reducer_thread=atoi(argv[2]);
+no_of_summarizer_thread=atoi(argv[3]);
 char *file_to_read="./a.txt";
 pthread_create(&file_reader,NULL,mapper_pool_updater,(void*)file_to_read);
 
@@ -134,16 +147,22 @@ pthread_create(&mapper_thread[i],NULL,mapper,NULL);
 for(i=0;i<no_of_reducer_thread;++i)
 pthread_create(&reducer_thread[i],NULL,reducer,NULL);
 
+for(i=0;i<no_of_summarizer_thread;++i)
+pthread_create(&summarizer_thread[i],NULL,summarizer,NULL);
+
 pthread_create(&write_thread,NULL,wordCountWriter,NULL);
 
-pthread_join(file_reader,NULL);
+pthread_create(&letter_thread,NULL,write_letter,NULL);
 
+pthread_join(file_reader,NULL);
+/*
 for(i=0;i<no_of_mapper_thread;++i) 
 pthread_join(mapper_thread[i],NULL);
 
 for(i=0;i<no_of_reducer_thread;++i)
 pthread_join(reducer_thread[i],NULL);
-
+*/
 pthread_join(write_thread,NULL);
+pthread_join(letter_thread,NULL);
 return 0;
 }
