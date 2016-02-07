@@ -3,6 +3,7 @@
 #include<string.h>
 #include<semaphore.h>
 #include<signal.h>
+#include<stdlib.h>
 #define MAX_BUF_SIZE 256
 #define MAX_BUF 256
 
@@ -33,7 +34,10 @@ int i,i1,ind;
 char buffer[MAX_BUF_SIZE];
 char *buf1=(char*)buf;
 FILE* fs=fopen(buf1,"r");
-
+if(!fs) {
+printf("Wrong filename...Exiting\n");
+exit(EXIT_FAILURE);
+}
 while(fgets(buffer,MAX_BUF_SIZE,fs)!=NULL){
 i=0;i1=0;
 //lock
@@ -129,12 +133,18 @@ pthread_exit(0);
 
 int main(int argc,char* argv[]){
 int i,j;
+char file_name[MAX_BUF];
+if(argc<5) {
+printf("Wrong Usage\n");
+exit(EXIT_FAILURE);
+}
 init();
 signal(SIGKILL,handler);
-no_of_mapper_thread=atoi(argv[1]);
-no_of_reducer_thread=atoi(argv[2]);
-no_of_summarizer_thread=atoi(argv[3]);
-char *file_to_read="./a.txt";
+strcpy(file_name,argv[1]);
+no_of_mapper_thread=atoi(argv[2]);
+no_of_reducer_thread=atoi(argv[3]);
+no_of_summarizer_thread=atoi(argv[4]);
+char *file_to_read=file_name;
 pthread_create(&file_reader,NULL,mapper_pool_updater,(void*)file_to_read);
 
 for(i=0;i<no_of_mapper_thread;++i)
@@ -151,13 +161,16 @@ pthread_create(&write_thread,NULL,wordCountWriter,NULL);
 pthread_create(&letter_thread,NULL,write_letter,NULL);
 
 pthread_join(file_reader,NULL);
-/*
+
 for(i=0;i<no_of_mapper_thread;++i) 
 pthread_join(mapper_thread[i],NULL);
 
 for(i=0;i<no_of_reducer_thread;++i)
 pthread_join(reducer_thread[i],NULL);
-*/
+
+for(i=0;i<no_of_summarizer_thread;++i)
+pthread_join(summarizer_thread[i],NULL);
+
 pthread_join(write_thread,NULL);
 pthread_join(letter_thread,NULL);
 return 0;
