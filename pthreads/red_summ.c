@@ -8,7 +8,7 @@
 #define SENTINAL '%'
 #define MAX_BUF 256
 
-extern char reducer_pool[5*MAX_BUF];//="(fsjka,1) (fsjka,1) (fsjka,1) (fsjka,1) (fsjka,1) (fhsjdkhda,1) (jkdka,1) (jkdka,1) (hjfhsjf,1) (hjfhsjf,1) (hjfhsjf,1) (hajfhaj,1) (hajfhaj,1) (hajfhaj,1) (hajfhaj,1) (fsjka,1) (faj,1)";
+extern char reducer_pool[5*MAX_BUF];
 extern pthread_mutex_t reducer_lock;
 char summarizer_pool[5*MAX_BUF];
 int letter_table[26];
@@ -34,7 +34,7 @@ struct node *next;
 
 pthread_mutex_t node_lock=PTHREAD_MUTEX_INITIALIZER;
 node node_list[256]={0};
-int  doneReading2=0;
+int  doneReading2=0,doneReading3=0;
 extern int doneReading1;
 
 void* reducer(void *a)
@@ -54,22 +54,17 @@ for(ind=0;ind<no_of_mapper_thread-no_of_reducer_thread;++ind)
 sem_post(&sem_read1);
 sem_post(&sem_write2);
 pthread_mutex_unlock(&gen_read);
-printf("Reducer Thread %lld Exiting\n",pthread_self());
 pthread_exit(0);
 }
 else {
 pthread_mutex_unlock(&gen_read);
 }
-//printf("before\n");
 sem_wait(&sem_read2);
-//printf("After\n");
 //prev_char=SENTINAL;
 int i=0,i1=0,index=0,ttl_wrd=0,size=0;
 
 pthread_mutex_lock(&reducer_lock);
 while(reducer_pool[i1]) {
-//printf("in reducer\n");
-//puts(reducer_pool);
 buffer[i++]=reducer_pool[i1++];
 //reducer_pool[i1++]=0;
 }
@@ -96,12 +91,6 @@ pthread_mutex_lock(&summarizer_lock);
 while(tmp){
 sprintf(summarizer_pool+size,"(%s,%d)\n",tmp->str,tmp->count);
 prev_tmp=tmp;
-/*
-int i;
-for(i=0;summarizer_pool[i];++i)
-printf("%c",summarizer_pool[i]);
-printf("\n");
-*/
 size+=strlen(tmp->str)+5;
 tmp=tmp->next;
 prev_tmp->next=NULL;
@@ -145,12 +134,6 @@ pthread_mutex_lock(&summarizer_lock);
 while(tmp){
 sprintf(summarizer_pool+size,"(%s,%d)\n",tmp->str,tmp->count);
 //puts(summarizer_pool+size);
-/*
-int i;
-for(i=0;summarizer_pool[i];++i)
-printf("%c",summarizer_pool[i]);
-printf("\n");
-*/
 size+=strlen(tmp->str)+5;
 prev_tmp=tmp;
 tmp=tmp->next;
@@ -190,7 +173,6 @@ i++;
 pthread_mutex_unlock(&summarizer_lock);
 fclose(fp);
 sem_post(&sem_read2);
-printf("Writer Thread %lld exiting\n",pthread_self());
 usleep(400);
 for(ind=0;ind<no_of_mapper_thread;++ind)
 pthread_kill(mapper_thread[ind],SIGKILL);
@@ -198,7 +180,7 @@ for(ind=0;ind<no_of_reducer_thread;++ind)
 pthread_kill(reducer_thread[ind],SIGKILL);
 for(ind=0;ind<no_of_summarizer_thread;++ind)
 pthread_kill(summarizer_thread[ind],SIGKILL);
-pthread_kill(letter_thread,SIGKILL);
+//pthread_kill(letter_thread,SIGKILL);
 pthread_exit(0);
 }
 else {
@@ -223,16 +205,28 @@ return NULL;
 void* summarizer(void *a) {
 char *str,buffer[5*MAX_BUF];
 while(1) {
-printf("Summarizer_thread %lld started\n",pthread_self());
-int count=0,i=0,i1=0;
+int count=0,i=0,i1=0,done,ind=0;
 sem_wait(&sem_write3);
+pthread_mutex_lock(&gen_read);
+done=doneReading2;
+if(done) {
+doneReading3=1;
+for(ind=0;ind<no_of_summarizer_thread;++ind) {
+sem_post(&sem_write4);
+}
+sem_post(&sem_read3);
+pthread_mutex_unlock(&gen_read);
+pthread_exit(0);
+}
+else {
+pthread_mutex_unlock(&gen_read);
+}
 sem_wait(&sem_read4);
 pthread_mutex_lock(&summarizer_lock);
 while(summarizer_pool[i]) {
 buffer[i1++]=summarizer_pool[i++];
 }
 buffer[i1]='\0';
-puts(buffer);
 pthread_mutex_unlock(&summarizer_lock);
 str=strtok(buffer,"\n");
 char ch;
@@ -240,16 +234,12 @@ while(str){
 if(str){count+=(str[strlen(str)-2]-'0');}
 str+=1;
 ch=str[0];
-printf("%c %d\n",ch,count);
 str=strtok(NULL,"\n");
 }
 i=0;
 pthread_mutex_lock(&table_lock);
 letter_table[ch-'a']+=count;
-printf("%c %d\n",ch,letter_table[ch-'a']);
 pthread_mutex_unlock(&table_lock);
-for(i=0;i<26;++i)
-printf("%c-%d \n",'a'+i,letter_table[i]);
 sem_post(&sem_write4);
 sem_post(&sem_read3);
 }
@@ -257,10 +247,27 @@ sem_post(&sem_read3);
 }
 
 void* write_letter(void *a) {
-int i;
+int i,done;
 while(1) {
-printf("letter thread %lld\n",pthread_self());
 sem_wait(&sem_write4);
+pthread_mutex_lock(&gen_read);
+done=doneReading3;
+if(done) {
+pthread_mutex_unlock(&gen_read);
+FILE *fs=fopen("./letterCount.txt","w+");
+pthread_mutex_lock(&table_lock);
+for(i=0;i<26;++i) {
+if(letter_table[i]) {
+fprintf(fs,"(%c,%d)\n",'a'+i,letter_table[i]);
+}
+}
+pthread_mutex_unlock(&table_lock);
+fclose(fs);
+pthread_exit(0);
+}
+else {
+pthread_mutex_unlock(&gen_read);
+}
 FILE *fs=fopen("./letterCount.txt","w+");
 pthread_mutex_lock(&table_lock);
 for(i=0;i<26;++i) {

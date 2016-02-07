@@ -48,7 +48,6 @@ mapper_pool[i1++]=buffer[i++];
 mapper_pool[i1]='\0';
 pthread_mutex_unlock(&mapper_lock);
 //unlock
-//puts(mapper_pool);
 sem_post(&sem_write);
 }
 fclose(fs);
@@ -57,7 +56,6 @@ doneReading=1;
 //do write as many time as mapper thread
 for(ind=0;ind<no_of_mapper_thread;++ind)
 sem_post(&sem_write);
-printf("Mapper Updater Thread %lld exiting\n",pthread_self());
 }
 
 
@@ -66,7 +64,6 @@ void* mapper(void *map)
 char buffer[MAX_BUF];
 int done;
 while(1){
-printf("Mapper Thread %lld started\n",pthread_self());
 int i=0,i1=0;
 sem_wait(&sem_write);
 sem_wait(&sem_read1);
@@ -80,7 +77,6 @@ sem_post(&sem_write1);
 for(ind=0;ind<no_of_reducer_thread-no_of_mapper_thread;++ind)
 sem_post(&sem_write1);
 pthread_mutex_unlock(&gen_read);
-printf("Mapper Thread %lld exiting\n",pthread_self());
 pthread_exit(0);
 }
 else {
@@ -126,8 +122,8 @@ sem_init(&sem_write4,0,0);
 sem_init(&sem_read4,0,1);
 }
 
-void handler(int a) {
-printf("in handler\n");
+
+void handler(int sig_no) {
 pthread_exit(0);
 }
 
