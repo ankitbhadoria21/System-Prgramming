@@ -27,7 +27,7 @@ extern void* wordCountWriter(void *);
 extern void* reducer(void *);
 extern void* summarizer(void *);
 extern void* write_letter(void *);
-
+/*
 void* mapper_pool_updater(void *buf)
 {
 int i,i1,ind;
@@ -60,6 +60,94 @@ doneReading=1;
 //do write as many time as mapper thread
 for(ind=0;ind<no_of_mapper_thread;++ind)
 sem_post(&sem_write);
+}
+
+*/
+void* mapper_pool_updater(void *buf1)
+{
+char *buf=(char*)buf1;
+FILE *fs=fopen(buf,"r");
+if(!fs) {
+printf("Wrong File Used ... Exiting\n");
+exit(EXIT_FAILURE);
+}
+
+char buffer[MAX_BUF];
+char ch='$',prev_char='$';
+int i=0,size=0,j,i1;
+while(!feof(fs)) {
+j=0;i1=0;
+while(ch==' ') ch=fgetc(fs);
+if(prev_char=='$'){
+ch=fgetc(fs);
+while(ch==' ')ch=fgetc(fs);
+prev_char=ch;
+}
+if(size<MAX_BUF-1) {
+buffer[i++]=ch;
+size++;
+}
+else {
+buffer[i]='\0';
+i=0;size=0;
+sem_wait(&sem_read);
+pthread_mutex_lock(&mapper_lock);
+while(buffer[j]) {
+mapper_pool[i1++]=buffer[j++];
+}
+mapper_pool[i1]='\0';
+pthread_mutex_unlock(&mapper_lock);
+sem_post(&sem_write);
+continue;
+}
+
+ch=fgetc(fs);
+
+if(ch==' ' || ch=='\n') {
+while(ch==' '|| ch=='\n') ch=fgetc(fs);
+if(ch!=prev_char) {
+buffer[i]='\0';
+i=0;size=0;
+prev_char=ch;
+sem_wait(&sem_read);
+pthread_mutex_lock(&mapper_lock);
+while(buffer[j]) {
+mapper_pool[i1++]=buffer[j++];
+}
+mapper_pool[i1]='\0';
+pthread_mutex_unlock(&mapper_lock);
+sem_post(&sem_write);
+continue;
+}
+else {
+if(size<MAX_BUF-1) {
+buffer[i++]=' ';
+size++;
+}
+else {
+buffer[MAX_BUF-1]='\0';
+i=0;size=0;
+sem_wait(&sem_read);
+pthread_mutex_lock(&mapper_lock);
+while(buffer[j]) {
+mapper_pool[i1++]=buffer[j++];
+}
+mapper_pool[i1]='\0';
+pthread_mutex_unlock(&mapper_lock);
+sem_post(&sem_write);
+continue;
+}
+}
+}
+}
+int ind;
+fclose(fs);
+sem_wait(&sem_read);
+doneReading=1;
+//do write as many time as mapper thread
+for(ind=0;ind<no_of_mapper_thread;++ind)
+sem_post(&sem_write);
+
 }
 
 
