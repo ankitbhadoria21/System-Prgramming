@@ -167,7 +167,7 @@ pthread_mutex_lock(&summarizer_lock);
 int i=0,ind;
 while(summarizer_pool[i]) {
 fputc(summarizer_pool[i],fp);
-summarizer_pool[i]=0;
+summarizer_pool[i]='\0';
 i++;
 }
 pthread_mutex_unlock(&summarizer_lock);
@@ -175,12 +175,12 @@ fclose(fp);
 sem_post(&sem_read2);
 usleep(400);
 for(ind=0;ind<no_of_mapper_thread;++ind)
-pthread_kill(mapper_thread[ind],SIGKILL);
+pthread_cancel(mapper_thread[ind]);
 for(ind=0;ind<no_of_reducer_thread;++ind)
-pthread_kill(reducer_thread[ind],SIGKILL);
+pthread_cancel(reducer_thread[ind]);
 for(ind=0;ind<no_of_summarizer_thread;++ind)
-pthread_kill(summarizer_thread[ind],SIGKILL);
-//pthread_kill(letter_thread,SIGKILL);
+pthread_cancel(summarizer_thread[ind]);
+pthread_cancel(letter_thread);
 pthread_exit(0);
 }
 else {
@@ -192,7 +192,7 @@ pthread_mutex_lock(&summarizer_lock);
 int i=0;
 while(summarizer_pool[i]) {
 fputc(summarizer_pool[i],fp);
-summarizer_pool[i]=0;
+summarizer_pool[i]='\0';
 i++;
 }
 pthread_mutex_unlock(&summarizer_lock);
@@ -211,9 +211,7 @@ pthread_mutex_lock(&gen_read);
 done=doneReading2;
 if(done) {
 doneReading3=1;
-for(ind=0;ind<no_of_summarizer_thread;++ind) {
 sem_post(&sem_write4);
-}
 sem_post(&sem_read3);
 pthread_mutex_unlock(&gen_read);
 pthread_exit(0);
@@ -255,6 +253,11 @@ done=doneReading3;
 if(done) {
 pthread_mutex_unlock(&gen_read);
 FILE *fs=fopen("./letterCount.txt","w+");
+if(!fs) {
+printf("File to write lettercount could not be opened\n");
+sem_post(&sem_read4);
+pthread_exit(0);
+}
 pthread_mutex_lock(&table_lock);
 for(i=0;i<26;++i) {
 if(letter_table[i]) {
@@ -263,12 +266,17 @@ fprintf(fs,"(%c,%d)\n",'a'+i,letter_table[i]);
 }
 pthread_mutex_unlock(&table_lock);
 fclose(fs);
-pthread_exit(0);
+sem_post(&sem_read4);
 }
 else {
 pthread_mutex_unlock(&gen_read);
 }
 FILE *fs=fopen("./letterCount.txt","w+");
+if(!fs) {
+printf("File to write lettercount could not be opened\n");
+sem_post(&sem_read4);
+pthread_exit(0);
+}
 pthread_mutex_lock(&table_lock);
 for(i=0;i<26;++i) {
 if(letter_table[i]) {
