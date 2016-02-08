@@ -6,12 +6,12 @@
 #include<signal.h>
 
 #define SENTINAL '%'
-#define MAX_BUF 256
+#define MAX_BUF 500
 
 extern char reducer_pool[5*MAX_BUF];
 extern pthread_mutex_t reducer_lock;
 char summarizer_pool[5*MAX_BUF];
-int letter_table[26];
+int letter_table[256]={0};
 pthread_mutex_t table_lock=PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t summarizer_lock=PTHREAD_MUTEX_INITIALIZER;
 sem_t sem_read2,sem_write2;
@@ -163,6 +163,10 @@ done=doneReading2;
 if(done){
 pthread_mutex_unlock(&gen_read);
 FILE* fp=fopen("./wordCount.txt","a+");
+if(!fp) {
+printf("Error in opening wordCount file...Exiting\n");
+exit(EXIT_FAILURE);
+}
 pthread_mutex_lock(&summarizer_lock);
 int i=0,ind;
 while(summarizer_pool[i]) {
@@ -188,6 +192,10 @@ pthread_mutex_unlock(&gen_read);
 }
 
 FILE* fp=fopen("./wordCount.txt","a+");
+if(!fp) {
+printf("Error in opening wordCount file...Exiting\n");
+exit(EXIT_FAILURE);
+}
 pthread_mutex_lock(&summarizer_lock);
 int i=0;
 while(summarizer_pool[i]) {
@@ -236,7 +244,7 @@ str=strtok(NULL,"\n");
 }
 i=0;
 pthread_mutex_lock(&table_lock);
-letter_table[ch-'a']+=count;
+letter_table[ch]+=count;
 pthread_mutex_unlock(&table_lock);
 sem_post(&sem_write4);
 sem_post(&sem_read3);
@@ -259,9 +267,9 @@ sem_post(&sem_read4);
 pthread_exit(0);
 }
 pthread_mutex_lock(&table_lock);
-for(i=0;i<26;++i) {
+for(i=0;i<256;++i) {
 if(letter_table[i]) {
-fprintf(fs,"(%c,%d)\n",'a'+i,letter_table[i]);
+fprintf(fs,"(%c,%d)\n",i,letter_table[i]);
 }
 }
 pthread_mutex_unlock(&table_lock);
@@ -278,9 +286,9 @@ sem_post(&sem_read4);
 pthread_exit(0);
 }
 pthread_mutex_lock(&table_lock);
-for(i=0;i<26;++i) {
+for(i=0;i<256;++i) {
 if(letter_table[i]) {
-fprintf(fs,"(%c,%d)\n",'a'+i,letter_table[i]);
+fprintf(fs,"(%c,%d)\n",i,letter_table[i]);
 }
 }
 pthread_mutex_unlock(&table_lock);

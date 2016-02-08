@@ -5,8 +5,9 @@
 #include<signal.h>
 #include<stdlib.h>
 #include<fcntl.h>
-#define MAX_BUF_SIZE 256
-#define MAX_BUF 256
+#define SENTINAL_CHAR '%'
+#define MAX_BUF_SIZE 500
+#define MAX_BUF 500
 
 //mapper pool lock
 char mapper_pool[MAX_BUF_SIZE];
@@ -39,14 +40,14 @@ exit(EXIT_FAILURE);
 }
 
 char buffer[MAX_BUF];
-char ch='$',prev_char='$';
+char ch=SENTINAL_CHAR,prev_char=SENTINAL_CHAR;
 int i=0,size=0,j,i1;
 while(!feof(fs)) {
 j=0;i1=0;
-while(ch==' ') ch=fgetc(fs);
-if(prev_char=='$'){
+while(ch==' '||ch=='\n') ch=fgetc(fs);
+if(prev_char==SENTINAL_CHAR){
 ch=fgetc(fs);
-while(ch==' ')ch=fgetc(fs);
+while(ch==' '||ch=='\n')ch=fgetc(fs);
 prev_char=ch;
 }
 if(size<MAX_BUF-1) {
@@ -109,8 +110,9 @@ continue;
 int ind;
 fclose(fs);
 sem_wait(&sem_read);
+pthread_mutex_lock(&gen_read);
 doneReading=1;
-//do write as many time as mapper thread
+pthread_mutex_unlock(&gen_read);
 sem_post(&sem_write);
 
 }
@@ -176,11 +178,6 @@ sem_init(&sem_write4,0,0);
 sem_init(&sem_read4,0,1);
 }
 
-/*
-void handler(int sig_no) {
-pthread_exit(0);
-}
-*/
 int main(int argc,char* argv[]){
 int i,j;
 char file_name[MAX_BUF];
@@ -189,11 +186,14 @@ printf("Wrong Usage\n");
 exit(EXIT_FAILURE);
 }
 init();
-//signal(SIGSEGV,handler);
 strcpy(file_name,argv[1]);
 no_of_mapper_thread=atoi(argv[2]);
 no_of_reducer_thread=atoi(argv[3]);
 no_of_summarizer_thread=atoi(argv[4]);
+if(no_of_mapper_thread<=0 || no_of_mapper_thread>1000 || no_of_reducer_thread<=0 || no_of_reducer_thread>1000 ||no_of_summarizer_thread>1000|| no_of_summarizer_thread<=0) {
+printf("Wrong Value for number of threads\n");
+exit(EXIT_FAILURE);
+}
 char *file_to_read=file_name;
 
 pthread_create(&file_reader,NULL,mapper_pool_updater,(void*)file_to_read);
