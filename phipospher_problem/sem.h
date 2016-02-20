@@ -1,8 +1,10 @@
+#define MAX_SIZE 101 //keep one more than number of philospher
+
 typedef struct {
 pthread_mutex_t lock;
 pthread_cond_t nonzero;
 unsigned count;
-int state;
+int state[MAX_SIZE];
 }semaphore_t;
 
 typedef struct {

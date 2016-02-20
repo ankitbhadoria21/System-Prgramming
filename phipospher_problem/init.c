@@ -35,7 +35,7 @@ exit(0);
 for(i=1;i<=phil;++i) {
 char num[MAX];
 sprintf(num,"%d",i);
-char *argv1[]={"./phil",num,argv[2],NULL};
+char *argv1[]={"./phil",num,argv[2],argv[1],NULL};
 pid=fork();
 if(pid==0) {
 execvp("./phil",argv1);
@@ -44,6 +44,13 @@ else if(pid==-1){
 printf("Error in fork()\n");
 }
 }
-wait(&status);
+waitpid(-1,&status,0);
+for(i=1;i<=phil;++i) {
+char name[MAX];
+sprintf(name,"%s%d","/tmp/philospher",i);
+remove(name);
+}
+remove("/tmp/semaphore");
+remove("/tmp/barrier");
 return 0;
-} 
+}

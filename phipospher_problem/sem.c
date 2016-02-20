@@ -10,7 +10,7 @@
 
 semaphore_t * semaphore_create(char *semaphore_name, int sem_val)
 {
-int fd;
+int fd,i;
 semaphore_t *semap;
 pthread_mutexattr_t psharedm;
 pthread_condattr_t psharedc;
@@ -29,7 +29,8 @@ close (fd);
 (void) pthread_mutex_init(&semap->lock, &psharedm);
 (void) pthread_cond_init(&semap->nonzero, &psharedc);
 semap->count = sem_val;
-semap->state=sem_val;
+for(i=1;i<=MAX_SIZE;++i)
+semap->state[i]=0;
 return (semap);
 }
 
