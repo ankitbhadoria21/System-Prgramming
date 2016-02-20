@@ -1,22 +1,37 @@
 #include<stdio.h>
 #include<semaphore.h>
 #include<pthread.h>
-#define MAX 10
+#include<memory.h>
+#include"sem.h"
+
+#define MAX 100
 #define LEFT(i,n) (i+n-1)%n
 #define RIGHT(i,n) (i+1)%n
 
 enum state_v{thinking,hungry,eating};
-sem_t read_sem,phil_sem[MAX];
-int state[MAX]={0};//put this in file
 int n;
-pthread_cond_t cond_var;
-pthread_mutex_t cond_lock;
-pthread_mutexattr_t mutex_attr;
-pthread_condattr_t cond_attr;
-int count=0; //put this in file
-pthread_t thread[MAX];
 
 void test(int i);
+
+void set_state(int i,int state) {
+printf("in set\n");
+char file_name[MAX];
+sprintf(file_name,"%s%d","/tmp/philospher",i);
+semaphore_t *sem_tmp=semaphore_open(file_name);
+sem_tmp->state=state;
+semaphore_close(sem_tmp);
+}
+
+int get_state(int i) {
+printf("in get\n");
+char file_name[MAX];
+sprintf(file_name,"%s%d","/tmp/philospher",i);
+semaphore_t *sem_tmp=semaphore_open(file_name);
+int state=sem_tmp->state;
+printf("state-%d\n",state);
+semaphore_close(sem_tmp);
+return state;
+}
 
 void eat(int i) {
 printf("Philospher %d Eating\n",i);
@@ -29,40 +44,43 @@ sleep(1);
 }
 
 void take_fork(int i) {
-sem_wait(&read_sem);
-state[i]=hungry;
+char phil_name[MAX];
+sprintf(phil_name,"%s%d","/tmp/philoshpher",i);
+semaphore_t *read_sem=semaphore_open("/tmp/semaphore");
+semaphore_wait(read_sem);
+set_state(i,hungry);
+printf("Philospher %d Hungry\n",i);
 test(i);
-sem_post(&read_sem);
-sem_wait(&phil_sem[i]);
+semaphore_post(read_sem);
+printf("after post\n");
+//semaphore_close(read_sem);//check if works uncommented
+semaphore_t *phil_sem=semaphore_open(phil_name);
+semaphore_wait(phil_sem);
+printf("after take\n");
 }
 
 void put_fork(int i) {
-sem_wait(&read_sem);
-state[i]=thinking;
+semaphore_t *read_sem=semaphore_open("/tmp/semaphore");
+semaphore_wait(read_sem);
+set_state(i,thinking);
 test(LEFT(i,n));
 test(RIGHT(i,n));
-sem_post(&read_sem);
+semaphore_post(read_sem);
 }
 
 void test(int i) {
-if(state[i]==hungry && state[LEFT(i,n)]!=eating && state[RIGHT(i,n)]!=eating) {
-state[i]=eating;
-sem_post(&phil_sem[i]);
+char phil_name[MAX];
+sprintf(phil_name,"%s%d","/tmp/philospher",i);
+semaphore_t *phil_sem=semaphore_open(phil_name);
+if(get_state(i)==hungry && get_state(LEFT(i,n))!=eating && printf("in test\n") && get_state(RIGHT(i,n))!=eating) {
+set_state(i,eating);
+semaphore_post(phil_sem);
 }
 }
 
-void* philospher(void* in) {
-int i=(int)in;
-pthread_mutex_lock(&cond_lock);
-count++;
-printf("c %d\n",count);
-if(count==n) {
-pthread_cond_broadcast(&cond_var);
-}
-pthread_cond_wait(&cond_var,&cond_lock);
-pthread_mutex_unlock(&cond_lock);
-printf("after %d\n",i);
-while(1) {
+void philospher(int i,int nooftime) {
+while(nooftime--) {
+printf("i-%d , t-%d",i,nooftime);
 think(i);
 take_fork(i);
 eat(i);
@@ -71,24 +89,14 @@ put_fork(i);
 
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-int i;
-pthread_mutexattr_init(&mutex_attr);
-pthread_condattr_init(&cond_attr);
-pthread_mutexattr_setpshared(&mutex_attr,PTHREAD_PROCESS_SHARED);
-pthread_condattr_setpshared(&cond_attr,PTHREAD_PROCESS_SHARED);
-pthread_mutex_init(&cond_lock,&mutex_attr);
-pthread_cond_init(&cond_var,&cond_attr);
-
-sem_init(&read_sem,0,1);
-for(i=0;i<MAX;++i)
-sem_init(&phil_sem[i],0,0);
-n=10;
-for(i=1;i<=n;++i)
-pthread_create(&thread[i],NULL,philospher,(void*)i);
-
-for(i=0;i<=n;++i)
-pthread_join(thread[i],NULL);
+printf("in phi\n");
+int phi_no=atoi(argv[1]);
+int ttl_loop=atoi(argv[2]);
+printf("%d %d\n",phi_no,ttl_loop);
+barrier_t *bar=barrier_open("/tmp/barrier");
+barrier(bar);
+philospher(phi_no,ttl_loop);
 return 0;
 }
