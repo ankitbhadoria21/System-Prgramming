@@ -22,3 +22,4 @@ void semaphore_close(semaphore_t *semap);
 barrier_t* barrier_create(char* barriername, int val);
 barrier_t* barrier_open(char* barriername);
 void barrier_wait( barrier_t* barriermap);
+void barrier_close(barrier_t *barrier);

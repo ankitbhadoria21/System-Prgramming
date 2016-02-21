@@ -80,6 +80,7 @@ barrier_t* barrier_create(char* name, int max)
    int fd;
    barrier_t * bar_t;
    pthread_mutexattr_t lock_attr;
+   pthread_condattr_t cond_attr;
    remove(name);
    fd = open(name, O_RDWR | O_CREAT | O_EXCL, 0666);
    if(fd<0) return NULL;
@@ -87,7 +88,6 @@ barrier_t* barrier_create(char* name, int max)
    pthread_mutexattr_init(&lock_attr);
    pthread_mutexattr_setpshared(&lock_attr, PTHREAD_PROCESS_SHARED);
 
-   pthread_condattr_t cond_attr;
    pthread_condattr_init(&cond_attr);
    pthread_condattr_setpshared(&cond_attr, PTHREAD_PROCESS_SHARED);
 
@@ -121,4 +121,9 @@ void barrier_wait( barrier_t* bar_map)
   else
       pthread_cond_wait(&bar_map->done, &bar_map->lock);
     pthread_mutex_unlock(&bar_map->lock);
+}
+
+void barrier_close(barrier_t *barrier)
+{
+munmap((void *) barrier, sizeof(barrier_t));
 }

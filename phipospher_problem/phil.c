@@ -40,12 +40,13 @@ set_state(read_sem,i,hungry);
 printf("Philospher %d Hungry\n",i+1);
 test(read_sem,i);
 semaphore_post(read_sem);
-//semaphore_close(read_sem);//check if works uncommented
+semaphore_close(read_sem);
 semaphore_t *phil_sem=semaphore_open(phil_name);
 if(!phil_sem) {
 exit(0);
 }
 semaphore_wait(phil_sem);
+semaphore_close(phil_sem);
 }
 
 void put_fork(int i) {
@@ -55,6 +56,7 @@ set_state(read_sem,i,thinking);
 test(read_sem,LEFT(i,n));
 test(read_sem,RIGHT(i,n));
 semaphore_post(read_sem);
+semaphore_close(read_sem);
 }
 
 void test(semaphore_t *sem,int i) {
@@ -65,6 +67,7 @@ if(get_state(sem,i)==hungry && get_state(sem,LEFT(i,n))!=eating && get_state(sem
 set_state(sem,i,eating);
 semaphore_post(phil_sem);
 }
+semaphore_close(phil_sem);
 }
 
 void philospher(int i,int nooftime) {
@@ -85,6 +88,7 @@ n=atoi(argv[3]);
 barrier_t *bar=barrier_open("/tmp/barrier");
 printf("philospher process %d waiting at barrier\n",phi_no+1);
 barrier_wait(bar);
+barrier_close(bar);
 philospher(phi_no,ttl_loop);
 printf("philospher process %d done with %d iteration\n",phi_no+1,ttl_loop);
 return 0;

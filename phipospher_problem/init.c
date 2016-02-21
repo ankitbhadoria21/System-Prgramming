@@ -44,7 +44,8 @@ else if(pid==-1){
 printf("Error in fork()\n");
 }
 }
-while(wait(&status)!=-1);
+for(i=0;i<phil;++i)
+wait(NULL);
 
 for(i=0;i<phil;++i) {
 char name[MAX];
