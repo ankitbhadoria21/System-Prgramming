@@ -5,7 +5,6 @@
 #define MAX 1000
 
 int main(int argc,char *argv[]) {
-int status;
 pid_t pid;
 int phil=atoi(argv[1]);
 int i;
