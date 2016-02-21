@@ -2,7 +2,7 @@
 #include<pthread.h>
 #include<stdlib.h>
 #include"sem.h"
-#define MAX 100
+#define MAX 1000
 
 int main(int argc,char *argv[]) {
 int status;
@@ -22,7 +22,7 @@ printf("Barrier not created\n");
 exit(0);
 }
 semaphore_t *sem_tmp;
-for(i=1;i<=phil;++i) {
+for(i=0;i<phil;++i) {
 char name[MAX];
 sprintf(name,"%s%d","/tmp/philospher",i);
 remove(name);
@@ -32,7 +32,7 @@ printf("Error in creating philospher semaphores\n");
 exit(0);
 }
 }
-for(i=1;i<=phil;++i) {
+for(i=0;i<phil;++i) {
 char num[MAX];
 sprintf(num,"%d",i);
 char *argv1[]={"./phil",num,argv[2],argv[1],NULL};
@@ -44,8 +44,9 @@ else if(pid==-1){
 printf("Error in fork()\n");
 }
 }
-waitpid(-1,&status,0);
-for(i=1;i<=phil;++i) {
+while(wait(&status)!=-1);
+
+for(i=0;i<phil;++i) {
 char name[MAX];
 sprintf(name,"%s%d","/tmp/philospher",i);
 remove(name);

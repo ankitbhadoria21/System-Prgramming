@@ -1,4 +1,4 @@
-#define MAX_SIZE 101 //keep one more than number of philospher
+#define MAX_SIZE 1500 
 
 typedef struct {
 pthread_mutex_t lock;
@@ -21,4 +21,4 @@ void semaphore_wait(semaphore_t *semap);
 void semaphore_close(semaphore_t *semap);
 barrier_t* barrier_create(char* barriername, int val);
 barrier_t* barrier_open(char* barriername);
-void barrier( barrier_t* barriermap);
+void barrier_wait( barrier_t* barriermap);
