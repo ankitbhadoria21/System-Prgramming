@@ -34,8 +34,8 @@ static int direction=0;
 static int count=10;
 static loff_t offset=0;
 
-//module_param(noOfDevices,int,S_IRUSR | S_IWUSR);
-//module_param(count,int,S_IRUSR | S_IWUSR);
+module_param(noOfDevices,int,S_IRUSR | S_IWUSR);
+module_param(count,int,S_IRUSR | S_IWUSR);
 
 //initializing function module_init not required with this function
 // had it been a different function module_init would be required
@@ -65,12 +65,12 @@ int init_module(void)
 	cdev_add(&(cdrv.cd),MKDEV(drv_num,i),1);
 	}
 	else printk(KERN_DEBUG"Major Number Not Assigned\n");
-	printk(KERN_DEBUG"Done Intializingn\n");
+	printk(KERN_DEBUG"Done Intializing\n");
     	return 0;
 }
 
 //Cleanup Function module_exit not needed for this functiona
-void cleanup_module(void) 
+void cleanup_module(void)
 {
 	int i;
 	kfree(ramdisk);
@@ -86,13 +86,25 @@ void cleanup_module(void)
 
 loff_t my_llseek(struct file *filp, loff_t off, int whence)
 {
+	switch(whence) {
+
+	case SEEK_SET:
+        if(off>SIZE) offset=SIZE;
+        else if((long long)off<0) offset=0;
+	else
+	offset=off;
+
+	case SEEK_CUR:
 	if(off>SIZE) offset=SIZE;
-	else if(off<0) offset=0;
+	else if((long long)off<0) offset=0;
 	else {
-	offset=PAGE_SIZE*(int)(off/PAGE_SIZE);
+	offset+=off;
 	if(offset>SIZE) offset=SIZE;
 	}
-	return 0;
+	break;
+	}
+	printk(KERN_DEBUG"offset alligned to nearest page boundary at %lld",offset);
+	return offset;
 }
 
 static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
@@ -137,7 +149,8 @@ static ssize_t my_write(struct file *a, char *b, size_t c, loff_t *d)
 }
 
 static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
-{	
+{
+	char old_dir[20];
 	printk(KERN_DEBUG"In Ioctl\n");
 	switch(num) {
 	case MY_READ:
@@ -148,13 +161,17 @@ static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 	break;
 	case ASP_CHGACCDIR:
 	down(&cdrv.sem);
+	direction?strcpy(old_dir,"reverse"):strcpy(old_dir,"regular");
 	if(!strcmp((char*)param,"reverse")) {
 	direction=1;
-	printk(KERN_DEBUG"change Direction %d\n",direction);
+	printk(KERN_DEBUG"change Direction to %d\n",direction);
+	copy_to_user((char*)param,old_dir,sizeof(old_dir));
 	up(&(cdrv.sem));
 	}
 	else {
 	direction=0;
+	printk(KERN_DEBUG"change Direction to %d\n",direction);
+	copy_to_user((char*)param,old_dir,sizeof(old_dir));
 	up(&(cdrv.sem));
 	}
 	break;
