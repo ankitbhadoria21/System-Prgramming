@@ -8,7 +8,7 @@
 #include <asm/uaccess.h>
 #include <linux/slab.h>
 #include <linux/semaphore.h>
-#define MAX_LENGTH 100
+#define MAX_LENGTH SIZE
 #define SIZE 16*PAGE_SIZE
 
 struct asp_mycdrv {
@@ -34,12 +34,12 @@ static int direction=0;
 static int count=10;
 static loff_t offset=0;
 
-module_param(noOfDevices,int,S_IRUSR | S_IWUSR);
-module_param(count,int,S_IRUSR | S_IWUSR);
+//module_param(noOfDevices,int,S_IRUSR | S_IWUSR);
+//module_param(count,int,S_IRUSR | S_IWUSR);
 
 //initializing function module_init not required with this function
 // had it been a different function module_init would be required
-int init_module(void) 
+int init_module(void)
 {
 	int i;
 	sema_init(&(cdrv.sem),1);
@@ -48,46 +48,57 @@ int init_module(void)
 	if(drv_num!=-1){
 	ramdisk=kmalloc(SIZE,GFP_KERNEL);
 	if(!ramdisk) {
-	printk(KERN_DEBUG"Memory Allocation Failed\n");
+	printk(KERN_DEBUG"Memory Allocation Failed for Ramdisk\n");
 	return -1;
 	}
+	temp=kmalloc(SIZE,GFP_KERNEL);
 	if(!temp) {
-	printk(KERN_DEBUG"Memory Allocation Failed\n");
+	printk(KERN_DEBUG"Memory Allocation Failed for temp\n");
 	return -1;
 	}
 	cl=class_create(THIS_MODULE,"chrdrv");
 	register_chrdev_region(drv_num,noOfDevices,"Sample");
 	for(i=0;i<noOfDevices;++i)
-	device_create(cl,NULL,MKDEV(drv_num,i),NULL,"mydrv%i",i);
+	device_create(cl,NULL,MKDEV(drv_num,i),NULL,"mycdrv%i",i);
 	cdev_init(&(cdrv.cd),&fops);
 	for(i=0;i<noOfDevices;++i)
 	cdev_add(&(cdrv.cd),MKDEV(drv_num,i),1);
 	}
 	else printk(KERN_DEBUG"Major Number Not Assigned\n");
+	printk(KERN_DEBUG"Done Intializingn\n");
     	return 0;
 }
 
 //Cleanup Function module_exit not needed for this functiona
 void cleanup_module(void) 
 {
+	int i;
 	kfree(ramdisk);
 	kfree(temp);
 	cdev_del(&(cdrv.cd));
-	device_destroy(cl,drv_num);
+	for(i=0;i<noOfDevices;++i)
+	device_destroy(cl,MKDEV(cdrv.devNo,i));
 	class_destroy(cl);
 	unregister_chrdev_region(drv_num,noOfDevices);
 	unregister_chrdev(cdrv.devNo,"Sample");
-
+	printk(KERN_DEBUG"Done Cleaning up\n");
 }
 
 loff_t my_llseek(struct file *filp, loff_t off, int whence)
 {
-return 0;
+	if(off>SIZE) offset=SIZE;
+	else if(off<0) offset=0;
+	else {
+	offset=PAGE_SIZE*(int)(off/PAGE_SIZE);
+	if(offset>SIZE) offset=SIZE;
+	}
+	return 0;
 }
 
 static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 {
 	int i;
+	down(&cdrv.sem);
 	if(!direction) {
 	for(i=0;i<count && *d+i < SIZE;++i) {
 	temp[i]=ramdisk[*d+i];
@@ -96,28 +107,38 @@ static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 	copy_to_user(b,temp,c);
 	}
 	else {
-	int j;
-	for(i=count,j=0;i>=0 && *d-i >= 0;--i,j++) {
-        temp[j]=ramdisk[*d-i];
+	for(i=0;i < count && *d+count-1-i >= 0;++i) {
+        temp[i]=ramdisk[*d+count-1-i];
         }
-        temp[j]='\0';
+        temp[i]='\0';
         copy_to_user(b,temp,c);
 	}
-	*d=0;
+	up(&cdrv.sem);
 	return 0;
 }
 
 static ssize_t my_write(struct file *a, char *b, size_t c, loff_t *d)
 {
-	char str[MAX_LENGTH];
-	copy_from_user(str,b,c);
-	printk(KERN_INFO"Message Received from UserSpace: %s\n",str);
-	*d=0;
+	int i;
+	down(&cdrv.sem);
+	copy_from_user(temp,b,c);
+	if(!direction) {
+	for(i=0;i<count && *d+i < SIZE-1 && &temp[i];++i)
+	ramdisk[*d+i]=temp[i];
+	ramdisk[*d+i]='\0';
+	}
+	else {
+	for(i=0;i < count && *d+count-1-i >= 0 && temp[i];++i)
+        ramdisk[*d+count-1-i]=temp[i];
+        ramdisk[*d+i]='\0';
+	}
+	up(&cdrv.sem);
 	return 0;
 }
 
 static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
-{
+{	
+	printk(KERN_DEBUG"In Ioctl\n");
 	switch(num) {
 	case MY_READ:
 	read_my(b,(char*)param,MAX_LENGTH,&offset);
@@ -129,6 +150,7 @@ static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 	down(&cdrv.sem);
 	if(!strcmp((char*)param,"reverse")) {
 	direction=1;
+	printk(KERN_DEBUG"change Direction %d\n",direction);
 	up(&(cdrv.sem));
 	}
 	else {
@@ -140,5 +162,4 @@ static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 	return 0;
 }
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Ankit Bhadoria");
 
