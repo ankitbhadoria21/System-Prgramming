@@ -21,21 +21,32 @@ int devNo;
 
 static struct asp_mycdrv cdrv;
 static int drv_num=-1;
-static char *ramdisk=NULL;
 static char *temp=NULL;
 static ssize_t read_my(struct file *, char *, size_t, loff_t *);
-static ssize_t my_write(struct file *, char *, size_t, loff_t *);
+static ssize_t my_write(struct file *,const char *, size_t, loff_t *);
 static long my_ioctl(struct file *, unsigned int, unsigned long);
 static loff_t my_llseek(struct file *filp, loff_t off, int whence);
 struct file_operations fops={.unlocked_ioctl=my_ioctl,.read=read_my,.llseek=my_llseek,.write=my_write};
 struct class *cl;
 static int noOfDevices=3;
 static int direction=0;
-static int count=10;
-static loff_t offset=0;
+static int offset=0;
 
+void strrev(char *str) {
+int start=0,end=strlen(str);
+char tmp;
+while(start<end) {
+tmp=str[start];
+str[start]=str[end];
+str[end]=tmp;
+start++;
+end--;
+}
+
+}
+
+//noOfDevice can be passed as an argument while loading the module
 module_param(noOfDevices,int,S_IRUSR | S_IWUSR);
-module_param(count,int,S_IRUSR | S_IWUSR);
 
 //initializing function module_init not required with this function
 // had it been a different function module_init would be required
@@ -46,8 +57,8 @@ int init_module(void)
 	drv_num=register_chrdev(0,"Sample",&fops);
 	cdrv.devNo=drv_num;
 	if(drv_num!=-1){
-	ramdisk=kmalloc(SIZE,GFP_KERNEL);
-	if(!ramdisk) {
+	cdrv.ramdisk=kmalloc(SIZE,GFP_KERNEL);
+	if(!cdrv.ramdisk) {
 	printk(KERN_DEBUG"Memory Allocation Failed for Ramdisk\n");
 	return -1;
 	}
@@ -73,7 +84,7 @@ int init_module(void)
 void cleanup_module(void)
 {
 	int i;
-	kfree(ramdisk);
+	kfree(cdrv.ramdisk);
 	kfree(temp);
 	cdev_del(&(cdrv.cd));
 	for(i=0;i<noOfDevices;++i)
@@ -90,37 +101,35 @@ loff_t my_llseek(struct file *filp, loff_t off, int whence)
 
 	case SEEK_SET:
         if(off>SIZE) offset=SIZE;
-        else if((long long)off<0) offset=0;
 	else
 	offset=off;
 
 	case SEEK_CUR:
 	if(off>SIZE) offset=SIZE;
-	else if((long long)off<0) offset=0;
 	else {
 	offset+=off;
 	if(offset>SIZE) offset=SIZE;
 	}
 	break;
 	}
-	printk(KERN_DEBUG"offset alligned to nearest page boundary at %lld",offset);
+	printk(KERN_DEBUG"offset alligned to nearest page boundary at %d",offset);
 	return offset;
 }
 
 static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 {
-	int i;
+	int i,count=c;
 	down(&cdrv.sem);
 	if(!direction) {
-	for(i=0;i<count && *d+i < SIZE;++i) {
-	temp[i]=ramdisk[*d+i];
+	for(i=0;i<count && *d+i < SIZE && cdrv.ramdisk[*d+i];++i) {
+	temp[i]=cdrv.ramdisk[*d+i];
 	}
 	temp[i]='\0';
 	copy_to_user(b,temp,c);
 	}
 	else {
-	for(i=0;i < count && *d+count-1-i >= 0;++i) {
-        temp[i]=ramdisk[*d+count-1-i];
+	for(i=0;i < count && *d+count-1-i >= 0 && cdrv.ramdisk[*d+count-1-i];++i) {
+        temp[i]=cdrv.ramdisk[*d+count-1-i];
         }
         temp[i]='\0';
         copy_to_user(b,temp,c);
@@ -129,20 +138,25 @@ static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 	return 0;
 }
 
-static ssize_t my_write(struct file *a, char *b, size_t c, loff_t *d)
+static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *e)
 {
-	int i;
+	int i,count=c,*d=&offset;
 	down(&cdrv.sem);
 	copy_from_user(temp,b,c);
+	printk(KERN_DEBUG"buffer recieved is - %s\n",temp);
 	if(!direction) {
-	for(i=0;i<count && *d+i < SIZE-1 && &temp[i];++i)
-	ramdisk[*d+i]=temp[i];
-	ramdisk[*d+i]='\0';
+	for(i=0;i<count && *d+i < SIZE-1 && temp[i];++i) {
+	cdrv.ramdisk[*d+i]=temp[i];
+	}
+	cdrv.ramdisk[*d+i]='\0';
+	printk(KERN_DEBUG"ramdisk content from %d is - %s\n",*d,cdrv.ramdisk+*d);
 	}
 	else {
-	for(i=0;i < count && *d+count-1-i >= 0 && temp[i];++i)
-        ramdisk[*d+count-1-i]=temp[i];
-        ramdisk[*d+i]='\0';
+	for(i=0;i < count && *d+count-1-i >= 0 && temp[i];++i) {
+	cdrv.ramdisk[*d+count-1-i]=temp[i];
+	}
+  	cdrv.ramdisk[*d+count]='\0';
+	printk(KERN_DEBUG"ramdisk content from %d is - %s\n",*d+count-i,cdrv.ramdisk+*d+count-i);
 	}
 	up(&cdrv.sem);
 	return 0;
@@ -154,10 +168,10 @@ static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 	printk(KERN_DEBUG"In Ioctl\n");
 	switch(num) {
 	case MY_READ:
-	read_my(b,(char*)param,MAX_LENGTH,&offset);
+	read_my(b,(char*)param,MAX_LENGTH,0);
 	break;
 	case MY_WRITE:
-	my_write(b,(char*)param,MAX_LENGTH,&offset);
+	my_write(b,(char*)param,MAX_LENGTH,0);
 	break;
 	case ASP_CHGACCDIR:
 	down(&cdrv.sem);
@@ -179,4 +193,5 @@ static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 	return 0;
 }
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Ankit Bhadoria");
 
