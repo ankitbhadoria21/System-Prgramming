@@ -1,4 +1,5 @@
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
@@ -32,21 +33,8 @@ static int noOfDevices=3;
 static int direction=0;
 static int offset=0;
 
-void strrev(char *str) {
-int start=0,end=strlen(str);
-char tmp;
-while(start<end) {
-tmp=str[start];
-str[start]=str[end];
-str[end]=tmp;
-start++;
-end--;
-}
-
-}
-
 //noOfDevice can be passed as an argument while loading the module
-module_param(noOfDevices,int,S_IRUSR | S_IWUSR);
+module_param(noOfDevices,int,S_IWUSR|S_IRUGO);
 
 //initializing function module_init not required with this function
 // had it been a different function module_init would be required
@@ -101,18 +89,21 @@ loff_t my_llseek(struct file *filp, loff_t off, int whence)
 
 	case SEEK_SET:
         if(off>SIZE) offset=SIZE;
-	else
-	offset=off;
-
+	else if(off<0) offset=0;
+	else offset=off;
+	break;
 	case SEEK_CUR:
 	if(off>SIZE) offset=SIZE;
+	else if(off<0) offset=0;
 	else {
 	offset+=off;
 	if(offset>SIZE) offset=SIZE;
 	}
 	break;
 	}
-	printk(KERN_DEBUG"offset alligned to nearest page boundary at %d",offset);
+	if (offset < 0) filp->f_pos=0;
+	filp->f_pos = offset;
+	printk(KERN_DEBUG"offset alligned to %d page %d",offset,off);
 	return offset;
 }
 
@@ -125,6 +116,7 @@ static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 	temp[i]=cdrv.ramdisk[*d+i];
 	}
 	temp[i]='\0';
+	printk(KERN_DEBUG"buffer to write is -%s",temp);
 	copy_to_user(b,temp,c);
 	}
 	else {
@@ -132,15 +124,16 @@ static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
         temp[i]=cdrv.ramdisk[*d+count-1-i];
         }
         temp[i]='\0';
+	printk(KERN_DEBUG"buffer to write is -%s",temp);
         copy_to_user(b,temp,c);
 	}
 	up(&cdrv.sem);
 	return 0;
 }
 
-static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *e)
+static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *d)
 {
-	int i,count=c,*d=&offset;
+	int i,count=c;
 	down(&cdrv.sem);
 	copy_from_user(temp,b,c);
 	printk(KERN_DEBUG"buffer recieved is - %s\n",temp);
@@ -149,14 +142,16 @@ static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *e)
 	cdrv.ramdisk[*d+i]=temp[i];
 	}
 	cdrv.ramdisk[*d+i]='\0';
-	printk(KERN_DEBUG"ramdisk content from %d is - %s\n",*d,cdrv.ramdisk+*d);
+	a->f_pos+=i+1;
+	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",*d,cdrv.ramdisk+*d);
 	}
 	else {
 	for(i=0;i < count && *d+count-1-i >= 0 && temp[i];++i) {
 	cdrv.ramdisk[*d+count-1-i]=temp[i];
 	}
   	cdrv.ramdisk[*d+count]='\0';
-	printk(KERN_DEBUG"ramdisk content from %d is - %s\n",*d+count-i,cdrv.ramdisk+*d+count-i);
+	a->f_pos+=count+1;
+	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",*d+count-i,cdrv.ramdisk+*d+count-i);
 	}
 	up(&cdrv.sem);
 	return 0;
@@ -165,13 +160,12 @@ static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *e)
 static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 {
 	char old_dir[20];
-	printk(KERN_DEBUG"In Ioctl\n");
 	switch(num) {
 	case MY_READ:
-	read_my(b,(char*)param,MAX_LENGTH,0);
+	read_my(b,(char*)param,num,0);
 	break;
 	case MY_WRITE:
-	my_write(b,(char*)param,MAX_LENGTH,0);
+	my_write(b,(char*)param,num,0);
 	break;
 	case ASP_CHGACCDIR:
 	down(&cdrv.sem);
