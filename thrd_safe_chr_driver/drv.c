@@ -9,6 +9,9 @@
 #include <asm/uaccess.h>
 #include <linux/slab.h>
 #include <linux/semaphore.h>
+#include<linux/list.h>
+
+#define MAX 255
 #define MAX_LENGTH SIZE
 #define SIZE 16*PAGE_SIZE
 
@@ -21,7 +24,9 @@ int devNo;
 };
 
 static struct asp_mycdrv cdrv;
+static struct list_head head;
 static int drv_num=-1;
+static char *mem[MAX]={NULL};
 static char *temp=NULL;
 static ssize_t read_my(struct file *, char *, size_t, loff_t *);
 static ssize_t my_write(struct file *,const char *, size_t, loff_t *);
@@ -31,7 +36,7 @@ struct file_operations fops={.unlocked_ioctl=my_ioctl,.read=read_my,.llseek=my_l
 struct class *cl;
 static int noOfDevices=3;
 static int direction=0;
-static int offset=0;
+static int offset=0,k=0;
 
 //noOfDevice can be passed as an argument while loading the module
 module_param(noOfDevices,int,S_IWUSR|S_IRUGO);
@@ -40,30 +45,66 @@ module_param(noOfDevices,int,S_IWUSR|S_IRUGO);
 // had it been a different function module_init would be required
 int init_module(void)
 {
-	int i;
-	sema_init(&(cdrv.sem),1);
+	int i,j;
+	struct asp_mycdrv *temp1;
+	struct list_head *tmp;
+	INIT_LIST_HEAD(&head);
+	for(j=0;j<noOfDevices;++j) {
+	temp1=kmalloc(sizeof(struct asp_mycdrv),GFP_KERNEL);
+	list_add(&(temp1->list),&head);
+	}
+
+	i=0;
+	list_for_each(tmp,&head) {
+	temp1=list_entry(tmp,struct asp_mycdrv,list);
+	sema_init(&(temp1->sem),1);
+	}
+
 	drv_num=register_chrdev(0,"Sample",&fops);
-	cdrv.devNo=drv_num;
+	if(drv_num==-1) {
+	printk(KERN_DEBUG"Major number not assigned\n");
+	return -1;
+	}
+	register_chrdev_region(drv_num,noOfDevices,"Sample");
+	j=0;
+
+	list_for_each(tmp,&head) {
+        temp1=list_entry(tmp,struct asp_mycdrv,list);
+	temp1->devNo=drv_num;
+	(temp1->cd).dev=MKDEV(drv_num,j);
 	if(drv_num!=-1){
-	cdrv.ramdisk=kmalloc(SIZE,GFP_KERNEL);
-	if(!cdrv.ramdisk) {
+	temp1->ramdisk=kmalloc(SIZE,GFP_KERNEL);
+	if(!(temp1->ramdisk)) {
 	printk(KERN_DEBUG"Memory Allocation Failed for Ramdisk\n");
 	return -1;
 	}
-	temp=kmalloc(SIZE,GFP_KERNEL);
-	if(!temp) {
+	}
+	j++;
+	}
+
+	//driver specific memory
+	for(i=0;i<noOfDevices;++i) {
+	mem[i]=kmalloc(SIZE,GFP_KERNEL);
+	if(!mem[i]) {
+	for(k=0;k<i;++k) kfree(mem[k]);
 	printk(KERN_DEBUG"Memory Allocation Failed for temp\n");
 	return -1;
 	}
+	}
+
 	cl=class_create(THIS_MODULE,"chrdrv");
-	register_chrdev_region(drv_num,noOfDevices,"Sample");
 	for(i=0;i<noOfDevices;++i)
 	device_create(cl,NULL,MKDEV(drv_num,i),NULL,"mycdrv%i",i);
-	cdev_init(&(cdrv.cd),&fops);
-	for(i=0;i<noOfDevices;++i)
-	cdev_add(&(cdrv.cd),MKDEV(drv_num,i),1);
+
+	list_for_each(tmp,&head) {
+	temp1=list_entry(tmp,struct asp_mycdrv,list);
+	cdev_init(&(temp1->cd),&fops);
 	}
-	else printk(KERN_DEBUG"Major Number Not Assigned\n");
+
+        list_for_each(tmp,&head) {
+        temp1=list_entry(tmp,struct asp_mycdrv,list);
+	cdev_add(&(temp1->cd),MKDEV(drv_num,i),1);
+	}
 	printk(KERN_DEBUG"Done Intializing\n");
     	return 0;
 }
@@ -72,15 +113,38 @@ int init_module(void)
 void cleanup_module(void)
 {
 	int i;
-	kfree(cdrv.ramdisk);
-	kfree(temp);
-	cdev_del(&(cdrv.cd));
+	struct asp_mycdrv *temp1;
+	struct list_head *tmp,*next;
+        //free ramdisk memory
+	list_for_each(tmp,&head) {
+        temp1=list_entry(tmp,struct asp_mycdrv,list);
+	if(temp1 && temp1->ramdisk)
+	kfree(temp1->ramdisk);
+	}
+
+//	uncomment later
+//	kfree(temp);
 	for(i=0;i<noOfDevices;++i)
-	device_destroy(cl,MKDEV(cdrv.devNo,i));
+	kfree(mem[i]);
+
+        list_for_each(tmp,&head) {
+        temp1=list_entry(tmp,struct asp_mycdrv,list);
+	cdev_del(&(temp1->cd));
+	}
+
+	for(i=0;i<noOfDevices;++i)
+	device_destroy(cl,MKDEV(drv_num,i));
 	class_destroy(cl);
 	unregister_chrdev_region(drv_num,noOfDevices);
-	unregister_chrdev(cdrv.devNo,"Sample");
+	unregister_chrdev(drv_num,"Sample");
+
+        list_for_each_safe(tmp,next,&head) {
+        temp1=list_entry(tmp,struct asp_mycdrv,list);
+	kfree(temp1);
+	}
+	list_del(&head);
 	printk(KERN_DEBUG"Done Cleaning up\n");
+
 }
 
 loff_t my_llseek(struct file *filp, loff_t off, int whence)
@@ -103,7 +167,7 @@ loff_t my_llseek(struct file *filp, loff_t off, int whence)
 	}
 	if (offset < 0) filp->f_pos=0;
 	filp->f_pos = offset;
-	printk(KERN_DEBUG"offset alligned to %d page %d",offset,off);
+	printk(KERN_DEBUG"offset alligned to %d page %lld",offset,off);
 	return offset;
 }
 
