@@ -21,34 +21,57 @@ struct cdev cd;
 char *ramdisk;
 struct semaphore sem;
 int devNo;
+int dir;
 };
 
 static struct asp_mycdrv cdrv;
 static struct list_head head;
 static int drv_num=-1;
+char *ramdisk=NULL;
 static char *mem[MAX]={NULL};
 static char *temp=NULL;
+static int dev_open (struct inode *in, struct file *fi);
 static ssize_t read_my(struct file *, char *, size_t, loff_t *);
 static ssize_t my_write(struct file *,const char *, size_t, loff_t *);
 static long my_ioctl(struct file *, unsigned int, unsigned long);
 static loff_t my_llseek(struct file *filp, loff_t off, int whence);
-struct file_operations fops={.unlocked_ioctl=my_ioctl,.read=read_my,.llseek=my_llseek,.write=my_write};
+struct file_operations fops={.open=dev_open,.unlocked_ioctl=my_ioctl,.read=read_my,.llseek=my_llseek,.write=my_write};
 struct class *cl;
 static int noOfDevices=3;
-static int direction=0;
-static int offset=0,k=0;
+static int *direction=NULL,k=0;
 
 //noOfDevice can be passed as an argument while loading the module
 module_param(noOfDevices,int,S_IWUSR|S_IRUGO);
+
+int dev_open (struct inode *in, struct file *fi) {
+	struct asp_mycdrv *temp1=NULL;
+	struct list_head *tmp=NULL;
+	printk(KERN_DEBUG"In Open");
+
+	list_for_each(tmp,&head) {
+	temp1=list_entry(tmp,struct asp_mycdrv,list);
+
+	if((MAJOR((temp1->cd).dev)==imajor(in)) && (MINOR((temp1->cd).dev)==iminor(in))) {
+	printk(KERN_DEBUG"major %d minor %d",MAJOR((temp1->cd).dev),MINOR((temp1->cd).dev));
+	direction=&(temp1->dir);
+	ramdisk=temp1->ramdisk;
+	temp=mem[MINOR((temp1->cd).dev)];
+	printk("dir %d",temp1->dir);
+	break;
+	}
+	}
+	return 0;
+}
 
 //initializing function module_init not required with this function
 // had it been a different function module_init would be required
 int init_module(void)
 {
 	int i,j;
-	struct asp_mycdrv *temp1;
-	struct list_head *tmp;
+	struct asp_mycdrv *temp1=NULL;
+	struct list_head *tmp=NULL;
 	INIT_LIST_HEAD(&head);
+
 	for(j=0;j<noOfDevices;++j) {
 	temp1=kmalloc(sizeof(struct asp_mycdrv),GFP_KERNEL);
 	list_add(&(temp1->list),&head);
@@ -70,8 +93,9 @@ int init_module(void)
 
 	list_for_each(tmp,&head) {
         temp1=list_entry(tmp,struct asp_mycdrv,list);
-	temp1->devNo=drv_num;
+	temp1->devNo=j;
 	(temp1->cd).dev=MKDEV(drv_num,j);
+	temp1->dir=0;
 	if(drv_num!=-1){
 	temp1->ramdisk=kmalloc(SIZE,GFP_KERNEL);
 	if(!(temp1->ramdisk)) {
@@ -101,9 +125,11 @@ int init_module(void)
 	cdev_init(&(temp1->cd),&fops);
 	}
 
+	i=0;
         list_for_each(tmp,&head) {
         temp1=list_entry(tmp,struct asp_mycdrv,list);
 	cdev_add(&(temp1->cd),MKDEV(drv_num,i),1);
+	i++;
 	}
 	printk(KERN_DEBUG"Done Intializing\n");
     	return 0;
@@ -122,8 +148,6 @@ void cleanup_module(void)
 	kfree(temp1->ramdisk);
 	}
 
-//	uncomment later
-//	kfree(temp);
 	for(i=0;i<noOfDevices;++i)
 	kfree(mem[i]);
 
@@ -134,6 +158,7 @@ void cleanup_module(void)
 
 	for(i=0;i<noOfDevices;++i)
 	device_destroy(cl,MKDEV(drv_num,i));
+
 	class_destroy(cl);
 	unregister_chrdev_region(drv_num,noOfDevices);
 	unregister_chrdev(drv_num,"Sample");
@@ -142,7 +167,7 @@ void cleanup_module(void)
         temp1=list_entry(tmp,struct asp_mycdrv,list);
 	kfree(temp1);
 	}
-	list_del(&head);
+
 	printk(KERN_DEBUG"Done Cleaning up\n");
 
 }
@@ -152,30 +177,33 @@ loff_t my_llseek(struct file *filp, loff_t off, int whence)
 	switch(whence) {
 
 	case SEEK_SET:
-        if(off>SIZE) offset=SIZE;
-	else if(off<0) offset=0;
-	else offset=off;
+        if(off>SIZE) off=SIZE;
+	else if(off<0) off=0;
 	break;
+
 	case SEEK_CUR:
-	if(off>SIZE) offset=SIZE;
-	else if(off<0) offset=0;
+	if(off>SIZE) off=SIZE;
+	else if(off<0) off=0;
 	else {
-	offset+=off;
-	if(offset>SIZE) offset=SIZE;
+	filp->f_pos += off;
+	if(filp->f_pos>SIZE) filp->f_pos=SIZE;
 	}
 	break;
+	filp->f_pos = off;
+
+	case SEEK_END:
+	if(SIZE-off>=0)
+	filp->f_pos=SIZE-off;
+	else filp->f_pos=0;
 	}
-	if (offset < 0) filp->f_pos=0;
-	filp->f_pos = offset;
-	printk(KERN_DEBUG"offset alligned to %d page %lld",offset,off);
-	return offset;
+	return off;
 }
 
 static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 {
 	int i,count=c;
 	down(&cdrv.sem);
-	if(!direction) {
+	if(!(*direction)) {
 	for(i=0;i<count && *d+i < SIZE && cdrv.ramdisk[*d+i];++i) {
 	temp[i]=cdrv.ramdisk[*d+i];
 	}
@@ -201,7 +229,7 @@ static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *d)
 	down(&cdrv.sem);
 	copy_from_user(temp,b,c);
 	printk(KERN_DEBUG"buffer recieved is - %s\n",temp);
-	if(!direction) {
+	if(!(*direction)) {
 	for(i=0;i<count && *d+i < SIZE-1 && temp[i];++i) {
 	cdrv.ramdisk[*d+i]=temp[i];
 	}
@@ -233,16 +261,16 @@ static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 	break;
 	case ASP_CHGACCDIR:
 	down(&cdrv.sem);
-	direction?strcpy(old_dir,"reverse"):strcpy(old_dir,"regular");
+	*direction?strcpy(old_dir,"reverse"):strcpy(old_dir,"regular");
 	if(!strcmp((char*)param,"reverse")) {
-	direction=1;
-	printk(KERN_DEBUG"change Direction to %d\n",direction);
+	*direction=1;
+	printk(KERN_DEBUG"change Direction to %d\n",*direction);
 	copy_to_user((char*)param,old_dir,sizeof(old_dir));
 	up(&(cdrv.sem));
 	}
 	else {
-	direction=0;
-	printk(KERN_DEBUG"change Direction to %d\n",direction);
+	*direction=0;
+	printk(KERN_DEBUG"change Direction to %d\n",*direction);
 	copy_to_user((char*)param,old_dir,sizeof(old_dir));
 	up(&(cdrv.sem));
 	}
