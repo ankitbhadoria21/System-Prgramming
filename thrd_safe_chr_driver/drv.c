@@ -9,7 +9,7 @@
 #include <asm/uaccess.h>
 #include <linux/slab.h>
 #include <linux/semaphore.h>
-#include<linux/list.h>
+#include <linux/list.h>
 
 #define MAX 255
 #define MAX_LENGTH SIZE
@@ -24,18 +24,21 @@ int devNo;
 int dir;
 };
 
-static struct asp_mycdrv cdrv;
+static struct asp_mycdrv *cdrv=NULL;
+static struct semaphore read_sem;
 static struct list_head head;
 static int drv_num=-1;
-char *ramdisk=NULL;
+static char *ramdisk=NULL;
 static char *mem[MAX]={NULL};
 static char *temp=NULL;
-static int dev_open (struct inode *in, struct file *fi);
+static int dev_open(struct inode *in, struct file *fi);
+static int dev_close(struct inode *in, struct file *fi);
 static ssize_t read_my(struct file *, char *, size_t, loff_t *);
 static ssize_t my_write(struct file *,const char *, size_t, loff_t *);
 static long my_ioctl(struct file *, unsigned int, unsigned long);
 static loff_t my_llseek(struct file *filp, loff_t off, int whence);
-struct file_operations fops={.open=dev_open,.unlocked_ioctl=my_ioctl,.read=read_my,.llseek=my_llseek,.write=my_write};
+struct file_operations fops={.owner=THIS_MODULE,.open=dev_open,.unlocked_ioctl=my_ioctl,.read=read_my,\
+.llseek=my_llseek,.write=my_write,.release=dev_close};
 struct class *cl;
 static int noOfDevices=3;
 static int *direction=NULL,k=0;
@@ -44,22 +47,30 @@ static int *direction=NULL,k=0;
 module_param(noOfDevices,int,S_IWUSR|S_IRUGO);
 
 int dev_open (struct inode *in, struct file *fi) {
-	struct asp_mycdrv *temp1=NULL;
 	struct list_head *tmp=NULL;
-	printk(KERN_DEBUG"In Open");
 
+	down(&read_sem);
 	list_for_each(tmp,&head) {
-	temp1=list_entry(tmp,struct asp_mycdrv,list);
+	cdrv=list_entry(tmp,struct asp_mycdrv,list);
 
-	if((MAJOR((temp1->cd).dev)==imajor(in)) && (MINOR((temp1->cd).dev)==iminor(in))) {
-	printk(KERN_DEBUG"major %d minor %d",MAJOR((temp1->cd).dev),MINOR((temp1->cd).dev));
-	direction=&(temp1->dir);
-	ramdisk=temp1->ramdisk;
-	temp=mem[MINOR((temp1->cd).dev)];
-	printk("dir %d",temp1->dir);
+	if((MAJOR((cdrv->cd).dev)==imajor(in)) && (MINOR((cdrv->cd).dev)==iminor(in))) {
+	printk(KERN_DEBUG"major %d minor %d\n",MAJOR((cdrv->cd).dev),MINOR((cdrv->cd).dev));
+	direction=&(cdrv->dir);
+	ramdisk=cdrv->ramdisk;
+	temp=mem[MINOR((cdrv->cd).dev)];
+	printk(KERN_DEBUG"Initial direction %d\n",cdrv->dir);
 	break;
 	}
 	}
+	if(!cdrv) {
+	printk(KERN_DEBUG"Device not Found\n");
+	return -1;
+	}
+	return 0;
+}
+
+int dev_close (struct inode *in, struct file *fi){
+	up(&read_sem);
 	return 0;
 }
 
@@ -82,7 +93,7 @@ int init_module(void)
 	temp1=list_entry(tmp,struct asp_mycdrv,list);
 	sema_init(&(temp1->sem),1);
 	}
-
+	sema_init(&read_sem,1);
 	drv_num=register_chrdev(0,"Sample",&fops);
 	if(drv_num==-1) {
 	printk(KERN_DEBUG"Major number not assigned\n");
@@ -201,57 +212,60 @@ loff_t my_llseek(struct file *filp, loff_t off, int whence)
 
 static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 {
+	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
 	int i,count=c;
-	down(&cdrv.sem);
+	down(sem1);
 	if(!(*direction)) {
-	for(i=0;i<count && *d+i < SIZE && cdrv.ramdisk[*d+i];++i) {
-	temp[i]=cdrv.ramdisk[*d+i];
+	for(i=0;i<count && *d+i < SIZE && cdrv->ramdisk[*d+i];++i) {
+	temp[i]=cdrv->ramdisk[*d+i];
 	}
 	temp[i]='\0';
 	printk(KERN_DEBUG"buffer to write is -%s",temp);
 	copy_to_user(b,temp,c);
 	}
 	else {
-	for(i=0;i < count && *d+count-1-i >= 0 && cdrv.ramdisk[*d+count-1-i];++i) {
-        temp[i]=cdrv.ramdisk[*d+count-1-i];
+	for(i=0;i < count && *d+count-1-i >= 0 && cdrv->ramdisk[*d+count-1-i];++i) {
+        temp[i]=cdrv->ramdisk[*d+count-1-i];
         }
         temp[i]='\0';
 	printk(KERN_DEBUG"buffer to write is -%s",temp);
         copy_to_user(b,temp,c);
 	}
-	up(&cdrv.sem);
+	up(sem1);
 	return 0;
 }
 
 static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *d)
 {
+	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
 	int i,count=c;
-	down(&cdrv.sem);
+	down(sem1);
 	copy_from_user(temp,b,c);
 	printk(KERN_DEBUG"buffer recieved is - %s\n",temp);
 	if(!(*direction)) {
 	for(i=0;i<count && *d+i < SIZE-1 && temp[i];++i) {
-	cdrv.ramdisk[*d+i]=temp[i];
+	cdrv->ramdisk[*d+i]=temp[i];
 	}
-	cdrv.ramdisk[*d+i]='\0';
+	cdrv->ramdisk[*d+i]='\0';
 	a->f_pos+=i+1;
-	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",*d,cdrv.ramdisk+*d);
+	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",*d,cdrv->ramdisk+*d);
 	}
 	else {
 	for(i=0;i < count && *d+count-1-i >= 0 && temp[i];++i) {
-	cdrv.ramdisk[*d+count-1-i]=temp[i];
+	cdrv->ramdisk[*d+count-1-i]=temp[i];
 	}
-  	cdrv.ramdisk[*d+count]='\0';
+  	cdrv->ramdisk[*d+count]='\0';
 	a->f_pos+=count+1;
-	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",*d+count-i,cdrv.ramdisk+*d+count-i);
+	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",*d+count-i,cdrv->ramdisk+*d+count-i);
 	}
-	up(&cdrv.sem);
+	up(sem1);
 	return 0;
 }
 
 static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 {
 	char old_dir[20];
+	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
 	switch(num) {
 	case MY_READ:
 	read_my(b,(char*)param,num,0);
@@ -260,19 +274,19 @@ static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 	my_write(b,(char*)param,num,0);
 	break;
 	case ASP_CHGACCDIR:
-	down(&cdrv.sem);
+	down(sem1);
 	*direction?strcpy(old_dir,"reverse"):strcpy(old_dir,"regular");
 	if(!strcmp((char*)param,"reverse")) {
 	*direction=1;
 	printk(KERN_DEBUG"change Direction to %d\n",*direction);
 	copy_to_user((char*)param,old_dir,sizeof(old_dir));
-	up(&(cdrv.sem));
+	up(sem1);
 	}
 	else {
 	*direction=0;
 	printk(KERN_DEBUG"change Direction to %d\n",*direction);
 	copy_to_user((char*)param,old_dir,sizeof(old_dir));
-	up(&(cdrv.sem));
+	up(sem1);
 	}
 	break;
 	}
@@ -280,4 +294,3 @@ static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
 }
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ankit Bhadoria");
-
