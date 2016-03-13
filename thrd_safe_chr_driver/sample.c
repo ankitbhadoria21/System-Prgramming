@@ -10,7 +10,6 @@ int id=open("/dev/mycdrv2",O_RDWR);
 //buf will receive the old direction of writing in the driver
 ioctl(id,ASP_CHGACCDIR,buf);
 write(id,buf1,14);
-close(id);
 id=open("/dev/mycdrv0",O_RDWR);
 write(id,buf,5);
 close(id);

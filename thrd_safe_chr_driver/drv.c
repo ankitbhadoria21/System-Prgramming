@@ -24,13 +24,10 @@ int devNo;
 int dir;
 };
 
-static struct asp_mycdrv *cdrv=NULL;
 static struct semaphore read_sem;
 static struct list_head head;
 static int drv_num=-1;
-static char *ramdisk=NULL;
 static char *mem[MAX]={NULL};
-static char *temp=NULL;
 static int dev_open(struct inode *in, struct file *fi);
 static int dev_close(struct inode *in, struct file *fi);
 static ssize_t read_my(struct file *, char *, size_t, loff_t *);
@@ -41,24 +38,20 @@ struct file_operations fops={.owner=THIS_MODULE,.open=dev_open,.unlocked_ioctl=m
 .llseek=my_llseek,.write=my_write,.release=dev_close};
 struct class *cl;
 static int noOfDevices=3;
-static int *direction=NULL,k=0;
+static int k=0;
 
 //noOfDevice can be passed as an argument while loading the module
 module_param(noOfDevices,int,S_IWUSR|S_IRUGO);
 
 int dev_open (struct inode *in, struct file *fi) {
 	struct list_head *tmp=NULL;
-
-	down(&read_sem);
+	struct asp_mycdrv *cdrv=NULL;
 	list_for_each(tmp,&head) {
 	cdrv=list_entry(tmp,struct asp_mycdrv,list);
 
 	if((MAJOR((cdrv->cd).dev)==imajor(in)) && (MINOR((cdrv->cd).dev)==iminor(in))) {
 	printk(KERN_DEBUG"major %d minor %d\n",MAJOR((cdrv->cd).dev),MINOR((cdrv->cd).dev));
-	direction=&(cdrv->dir);
-	ramdisk=cdrv->ramdisk;
-	temp=mem[MINOR((cdrv->cd).dev)];
-	printk(KERN_DEBUG"Initial direction %d\n",cdrv->dir);
+	fi->private_data=(void*)cdrv;
 	break;
 	}
 	}
@@ -70,7 +63,6 @@ int dev_open (struct inode *in, struct file *fi) {
 }
 
 int dev_close (struct inode *in, struct file *fi){
-	up(&read_sem);
 	return 0;
 }
 
@@ -212,9 +204,16 @@ loff_t my_llseek(struct file *filp, loff_t off, int whence)
 
 static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 {
+	struct asp_mycdrv *cdrv=(struct asp_mycdrv*)(a->private_data);
 	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
 	int i,count=c;
+	char *temp=NULL;
+	char *ramdisk=NULL;
+	int *direction=NULL;
 	down(sem1);
+	temp=mem[MINOR((cdrv->cd).dev)];
+	ramdisk=cdrv->ramdisk;
+	direction=&(cdrv->dir);
 	if(!(*direction)) {
 	for(i=0;i<count && *d+i < SIZE && cdrv->ramdisk[*d+i];++i) {
 	temp[i]=cdrv->ramdisk[*d+i];
@@ -237,9 +236,16 @@ static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 
 static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *d)
 {
+	struct asp_mycdrv *cdrv=(struct asp_mycdrv*)(a->private_data);
 	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
 	int i,count=c;
-	down(sem1);
+	char *temp=NULL;
+        char *ramdisk=NULL;
+        int *direction=NULL;
+        down(sem1);
+        temp=mem[MINOR((cdrv->cd).dev)];
+        ramdisk=cdrv->ramdisk;
+        direction=&(cdrv->dir);
 	copy_from_user(temp,b,c);
 	printk(KERN_DEBUG"buffer recieved is - %s\n",temp);
 	if(!(*direction)) {
@@ -262,19 +268,22 @@ static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *d)
 	return 0;
 }
 
-static long my_ioctl(struct file *b, unsigned int num, unsigned long param)
+static long my_ioctl(struct file *a, unsigned int num, unsigned long param)
 {
 	char old_dir[20];
+	int *direction=NULL;
+	struct asp_mycdrv *cdrv=(struct asp_mycdrv*)(a->private_data);
 	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
 	switch(num) {
 	case MY_READ:
-	read_my(b,(char*)param,num,0);
+	read_my(a,(char*)param,num,0);
 	break;
 	case MY_WRITE:
-	my_write(b,(char*)param,num,0);
+	my_write(a,(char*)param,num,0);
 	break;
 	case ASP_CHGACCDIR:
 	down(sem1);
+	direction=&(cdrv->dir);
 	*direction?strcpy(old_dir,"reverse"):strcpy(old_dir,"regular");
 	if(!strcmp((char*)param,"reverse")) {
 	*direction=1;
