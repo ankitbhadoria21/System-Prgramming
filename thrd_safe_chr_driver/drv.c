@@ -182,27 +182,25 @@ loff_t my_llseek(struct file *filp, loff_t off, int whence)
 	case SEEK_SET:
         if(off>SIZE) off=SIZE;
 	else if(off<0) off=0;
+	filp->f_pos = off;
 	break;
 
 	case SEEK_CUR:
-	if(off>SIZE) off=SIZE;
-	else if(off<0) off=0;
-	else {
 	filp->f_pos += off;
 	if(filp->f_pos>SIZE) filp->f_pos=SIZE;
-	}
+	else if(filp->f_pos < 0) filp->f_pos=0;
 	break;
-	filp->f_pos = off;
 
 	case SEEK_END:
 	if(SIZE-off>=0)
 	filp->f_pos=SIZE-off;
 	else filp->f_pos=0;
 	}
+	printk(KERN_DEBUG"File Offset is at %lld",filp->f_pos);
 	return off;
 }
 
-static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
+static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *e)
 {
 	struct asp_mycdrv *cdrv=(struct asp_mycdrv*)(a->private_data);
 	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
@@ -215,30 +213,32 @@ static ssize_t read_my(struct file *a, char *b, size_t c, loff_t *d)
 	ramdisk=cdrv->ramdisk;
 	direction=&(cdrv->dir);
 	if(!(*direction)) {
-	for(i=0;i<count && *d+i < SIZE && cdrv->ramdisk[*d+i];++i) {
-	temp[i]=cdrv->ramdisk[*d+i];
+	for(i=0;i<count && a->f_pos+i < SIZE && cdrv->ramdisk[a->f_pos+i];++i) {
+	temp[i]=cdrv->ramdisk[a->f_pos+i];
 	}
 	temp[i]='\0';
-	printk(KERN_DEBUG"buffer to write is -%s",temp);
+	printk(KERN_DEBUG"buffer to write is -%s at offset for buffer %s %lld",temp,cdrv->ramdisk,a->f_pos);
 	copy_to_user(b,temp,c);
 	}
 	else {
-	for(i=0;i < count && *d+count-1-i >= 0 && cdrv->ramdisk[*d+count-1-i];++i) {
-        temp[i]=cdrv->ramdisk[*d+count-1-i];
+	printk(KERN_DEBUG"Doing reverse read at offset %lld for buffer %s count %d\n",a->f_pos,cdrv->ramdisk,count);
+	for(i=0;i < count && a->f_pos+count-1-i >= 0 && cdrv->ramdisk[a->f_pos+count-1-i];++i) {
+        temp[i]=cdrv->ramdisk[a->f_pos+count-1-i];
         }
         temp[i]='\0';
-	printk(KERN_DEBUG"buffer to write is -%s",temp);
+	printk(KERN_DEBUG"buffer to write is -%s at offset %lld",temp,a->f_pos);
         copy_to_user(b,temp,c);
 	}
 	up(sem1);
 	return 0;
 }
 
-static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *d)
+static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *e)
 {
 	struct asp_mycdrv *cdrv=(struct asp_mycdrv*)(a->private_data);
 	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
-	int i,count=c;
+	int i;
+	size_t count=c;
 	char *temp=NULL;
         char *ramdisk=NULL;
         int *direction=NULL;
@@ -249,20 +249,18 @@ static ssize_t my_write(struct file *a,const char *b, size_t c, loff_t *d)
 	copy_from_user(temp,b,c);
 	printk(KERN_DEBUG"buffer recieved is - %s\n",temp);
 	if(!(*direction)) {
-	for(i=0;i<count && *d+i < SIZE-1 && temp[i];++i) {
-	cdrv->ramdisk[*d+i]=temp[i];
+	for(i=0;i<count && a->f_pos+i < SIZE-1 && temp[i];++i) {
+	cdrv->ramdisk[a->f_pos+i]=temp[i];
 	}
-	cdrv->ramdisk[*d+i]='\0';
-	a->f_pos+=i+1;
-	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",*d,cdrv->ramdisk+*d);
+	cdrv->ramdisk[a->f_pos+i]='\0';
+	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",a->f_pos,cdrv->ramdisk+a->f_pos);
 	}
 	else {
-	for(i=0;i < count && *d+count-1-i >= 0 && temp[i];++i) {
-	cdrv->ramdisk[*d+count-1-i]=temp[i];
+	for(i=0;i < count && a->f_pos+count-1-i >= 0 && temp[i];++i) {
+	cdrv->ramdisk[a->f_pos+count-1-i]=temp[i];
 	}
-  	cdrv->ramdisk[*d+count]='\0';
-	a->f_pos+=count+1;
-	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",*d+count-i,cdrv->ramdisk+*d+count-i);
+  	cdrv->ramdisk[a->f_pos+count]='\0';
+	printk(KERN_DEBUG"ramdisk content at offset %lld is - %s\n",a->f_pos,cdrv->ramdisk+a->f_pos);
 	}
 	up(sem1);
 	return 0;
@@ -276,10 +274,10 @@ static long my_ioctl(struct file *a, unsigned int num, unsigned long param)
 	struct semaphore *sem1=(struct semaphore*)&(cdrv->sem);
 	switch(num) {
 	case MY_READ:
-	read_my(a,(char*)param,num,0);
+	read_my(a,(char*)param,num,NULL);
 	break;
 	case MY_WRITE:
-	my_write(a,(char*)param,num,0);
+	my_write(a,(char*)param,num,NULL);
 	break;
 	case ASP_CHGACCDIR:
 	down(sem1);
